@@ -12471,6 +12471,19 @@ ${records}` , cache_control: { type: 'ephemeral' } },
       return { render, tick, all, scan, remove, openApp };
     })();
 
+    // Ask the browser to keep this app's records and documents. Without this the browser may clear them on its own
+    // when the device runs low on space, or (Safari) after a week without a visit. Granted storage is only cleared
+    // when she clears it herself. Asked on start and again on the first tap, since some browsers only grant it then.
+    function keepStorageSafe() {
+      try {
+        const s = navigator.storage;
+        if (!s || !s.persist || !s.persisted) return;
+        s.persisted().then(granted => { if (!granted) return s.persist(); }).catch(() => {});
+      } catch (e) {}
+    }
+    keepStorageSafe();
+    window.addEventListener('pointerdown', keepStorageSafe, { once: true, capture: true });
+
     window.addEventListener('DOMContentLoaded', async () => {
       initTheme();
       await initIndexedDB();
