@@ -220,7 +220,6 @@ html{background:var(--hub-bg)!important}body{background:transparent!important;mi
 <header class="hub-bar" id="hub-side">
   <div class="hub-side-label">My Hub</div>
   <nav class="hub-tabs" id="hub-tabs" role="tablist" aria-label="Apps" aria-orientation="vertical">
-    <button type="button" role="tab" id="tab-mind" data-tab="mind">🧠 Mind</button>
     <button type="button" role="tab" id="tab-workout" data-tab="workout">💪 Workout</button>
     <button type="button" role="tab" id="tab-money" data-tab="money">💵 Money</button>
     <button type="button" role="tab" id="tab-insights" data-tab="insights">📊 Insights</button>
@@ -236,7 +235,7 @@ html{background:var(--hub-bg)!important}body{background:transparent!important;mi
     <div class="hub-page">
       <div>
         <h1>Insights</h1>
-        <p class="hub-muted" style="margin-top:6px">Your week in Mind Tracker and Workout, and how they connect.</p>
+        <p class="hub-muted" style="margin-top:6px">Your week in Workout.</p>
       </div>
       <section class="hub-card" aria-labelledby="ins-week-h">
         <div class="ins-week">
@@ -245,14 +244,14 @@ html{background:var(--hub-bg)!important}body{background:transparent!important;mi
           <button type="button" class="hub-btn" id="ins-next" aria-label="Next week">›</button>
         </div>
         <div class="ins-days" id="ins-days"></div>
-        <div class="ins-key"><span>Circle = mood (1–10)</span><span>💪 worked out</span></div>
+        <div class="ins-key"><span>💪 worked out</span></div>
       </section>
       <section class="hub-card" aria-labelledby="ins-rep-h">
         <h2 id="ins-rep-h">Weekly report</h2>
         <div class="ins-grid" id="ins-report"></div>
         <p class="hub-muted" id="ins-status" role="status"></p>
       </section>
-      <section class="hub-card" aria-labelledby="ins-links-h">
+      <section class="hub-card" aria-labelledby="ins-links-h" style="display:none">
         <div>
           <h2 id="ins-links-h">How workouts affect your mood</h2>
           <p class="hub-muted" style="margin-top:4px">Your average mood on different kinds of days, from the last 90 days.</p>
@@ -394,11 +393,10 @@ const HUB = (() => {
   function setupTabs() {
     setupMenu();
     document.querySelectorAll("#hub-tabs button").forEach(b => b.addEventListener("click", () => { showTab(b.dataset.tab); setMenu(false); window.scrollTo(0, 0); }));
-    let first = "mind", saved = null;
-    try { saved = localStorage.getItem("hub_tab"); first = saved || "mind"; } catch {}
-    const h = location.hash.slice(1);
-    // Fresh Start is turned off in this version
-    if (first === "fresh" || !document.getElementById("app-" + first)) first = "mind";
+    let first = "workout", saved = null;
+    try { saved = localStorage.getItem("hub_tab"); first = saved || "workout"; } catch {}
+    // Mind Tracker and Fresh Start are turned off in this version
+    if (first === "fresh" || first === "mind" || !document.getElementById("app-" + first)) first = "workout";
     showTab(first);
   }
 
@@ -599,7 +597,7 @@ const HUB = (() => {
       const dt = addDays(start, i), m = M.mood[k];
       const ic = [M.work[k] ? "💪" : ""].filter(Boolean).join("");
       return `<div class="ins-day ${k === todayIso ? "today" : ""}"><span class="dn">${dt.toLocaleDateString("en-US", { weekday: "short" })}</span><span>${dt.getDate()}</span>
-        <span class="mood ${m == null ? "none" : ""}" style="${m == null ? "" : "background:" + moodColor(m)}">${m == null ? "" : m}</span><span class="ic">${ic}</span></div>`;
+        <span class="ic">${ic}</span></div>`;
     }).join("");
 
     // Weekly report
@@ -607,10 +605,6 @@ const HUB = (() => {
     const cnt = (map, ks) => ks.filter(k => map[k]).length;
     const sum = (map, ks) => ks.reduce((t, k) => t + (map[k] || 0), 0);
     const cards = [];
-    if (d.mind) {
-      const a = avg(vals(M.mood, days)), b = avg(vals(M.mood, prev));
-      cards.push(statCard("🧠 Mood", a == null ? "–" : a.toFixed(1), `average of ${pl(vals(M.mood, days).length, "day")}${trend(a && +a.toFixed(1), b && +b.toFixed(1), "")}`, "mood"));
-    }
     if (d.workout) cards.push(statCard("💪 Workouts", cnt(M.work, days), `${cnt(M.work, days) === 1 ? "day" : "days"} worked out (${sum(M.work, days)} done)${trend(cnt(M.work, days), cnt(M.work, prev), "")}`, "workout"));
     $("ins-report").innerHTML = cards.join("") || `<p class="hub-muted">No data yet.</p>`;
     const missing = INS_APPS.filter(k => !d[k]).map(k => LABELS[k]);
