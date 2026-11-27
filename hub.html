@@ -5341,6 +5341,9 @@ table.g tr.hr>*{padding:0!important;font-size:0!important;line-height:0!importan
 .findbar input[type=text]:focus{border-color:var(--g)}
 .findbar .ff{display:flex;justify-content:flex-end;gap:6px;padding:0 10px 10px;align-items:center}
 .findbar .ff span{margin-right:auto;color:#a00;font-size:12px}
+.findbar .ff{flex-wrap:wrap}
+.findbar:not(.replace) .rep,.findbar.replace .nrep{display:none}
+.findbar .ff span.ok{color:var(--g2,#185c37)}
 .btn{min-width:78px;height:25px;border:1px solid #adadad!important;background:#e1e1e1!important;padding:0 10px!important;border-radius:2px}
 .btn:hover{background:#e5f1fb!important;border-color:#0078d7!important}
 .btn.pri{border-color:var(--g)!important;box-shadow:inset 0 0 0 1px var(--g)}
@@ -5365,6 +5368,7 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.18)}
 .xl.short .ribbon{display:none}
 .xl.short.ropen .ribbon{display:block;position:absolute;left:0;right:0;top:60px;z-index:40;box-shadow:0 4px 10px rgba(0,0,0,.25)}
 .xl.tiny .tbar,.xl.tiny .sbar{display:none}
+.xl.tiny .fbar{height:24px}
 .xl.tiny.ropen .ribbon{top:28px}
 @media print{.xl{display:none}}
 
@@ -5651,10 +5655,11 @@ const XL_HTML = `
   <div class="stip" id="stip" hidden></div>
   <div class="ntip" id="ntip" hidden><div class="nt" id="ntText"></div><div class="na"><button type="button" class="btn" id="ntEdit">Edit</button></div></div>
   <div class="findbar" id="findbar" hidden>
-    <div class="fh"><b style="font-weight:600">Find</b><button type="button" class="x" id="findX" title="Close">✕</button></div>
+    <div class="fh"><b style="font-weight:600" id="findTitle">Find</b><button type="button" class="x" id="findX" title="Close">✕</button></div>
     <div class="fb"><span>Find what:</span><input type="text" id="findQ" spellcheck="false" autocomplete="off">
+      <span class="rep">Replace with:</span><input type="text" class="rep" id="findR" spellcheck="false" autocomplete="off">
       <span>Search:</span><label class="chk" style="padding:0"><input type="checkbox" id="findAll"> All sheets</label></div>
-    <div class="ff"><span id="findMsg"></span><button type="button" class="btn pri" id="findNext">Find Next</button><button type="button" class="btn" id="findClose">Close</button></div>
+    <div class="ff"><span id="findMsg"></span><button type="button" class="btn nrep" id="findToRep">Replace…</button><button type="button" class="btn rep" id="findRepAll">Replace All</button><button type="button" class="btn rep" id="findRep">Replace</button><button type="button" class="btn pri" id="findNext">Find Next</button><button type="button" class="btn" id="findClose">Close</button></div>
   </div>
   <dialog class="dlg" id="dlg"></dialog>
   <input type="file" id="openFile" accept=".xlsx,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>
@@ -5945,9 +5950,9 @@ function shiftFormula(f, dr, dc) {
 
 /* ---------- evaluation ---------- */
 let wb = null;                  // the workbook
-let memo = new Map(), busy = new Set(), circular = null;
+let memo = new Map(), busy = new Set(), circular = null, inLoop = new Set();
 const usedCache = new Map();
-function resetCalc() { memo = new Map(); busy = new Set(); circular = null; usedCache.clear(); }
+function resetCalc() { memo = new Map(); busy = new Set(); circular = null; inLoop = new Set(); usedCache.clear(); }
 function sheetIdx(name) { const l = String(name).toLowerCase(); return wb.sheets.findIndex(s => s.name.toLowerCase() === l); }
 function usedOf(si) {
   let u = usedCache.get(si);
@@ -5968,12 +5973,18 @@ function cellVal(si, r, c) {
   if (v[0] !== '=' || v.length < 2) return v;
   const k = si + '|' + r + ',' + c;
   if (memo.has(k)) return memo.get(k);
-  if (busy.has(k)) { if (!circular) circular = { si, r, c }; return 0; }
+  if (busy.has(k)) {
+    if (!circular) circular = { si, r, c };
+    // Every cell in the loop shows 0, as in Excel
+    let on = false; for (const b of busy) { if (b === k) on = true; if (on) inLoop.add(b); }
+    return 0;
+  }
   busy.add(k);
   let out;
   try { out = scalar(evalNode(getAst(v.slice(1)), { si, r, c }), { si, r, c }); }
   catch (e) { out = isErr(e) ? e : (e instanceof RangeError ? ERR.num : ERR.val); }
   busy.delete(k);
+  if (inLoop.has(k)) out = 0;
   if (out === null || out === undefined) out = 0;
   if (typeof out === 'number') out = isFinite(out) ? out : ERR.num;
   memo.set(k, out);
@@ -6111,6 +6122,21 @@ FN.PRODUCT = (a, c) => { const x = nums(a, c); return x.length ? x.reduce((m, v)
 FN.MEDIAN = (a, c) => { const x = nums(a, c).sort((p, q) => p - q); if (!x.length) throw ERR.num; const h = x.length >> 1; return x.length % 2 ? x[h] : (x[h - 1] + x[h]) / 2; };
 FN.LARGE = (a, c) => { need(a, 2); const x = nums([a[0]], c).sort((p, q) => q - p), k = Math.ceil(nv(a[1], c)); if (k < 1 || k > x.length) throw ERR.num; return x[k - 1]; };
 FN.SMALL = (a, c) => { need(a, 2); const x = nums([a[0]], c).sort((p, q) => p - q), k = Math.ceil(nv(a[1], c)); if (k < 1 || k > x.length) throw ERR.num; return x[k - 1]; };
+// RANK(number, list, [order]): 1 = largest unless order is not 0; ties share the best rank
+FN.RANK = (a, c) => { need(a, 2, 3); const v = nv(a[0], c), x = nums([a[1]], c), asc = has(a, 2) && nv(a[2], c) !== 0; if (!x.includes(v)) throw ERR.na; return 1 + x.filter(y => asc ? y < v : y > v).length; };
+FN['RANK.EQ'] = FN.RANK;
+const variance = (x, pop) => { const n = x.length; if (n < (pop ? 1 : 2)) throw ERR.div; const m = sum(x) / n; return sum(x.map(v => (v - m) * (v - m))) / (pop ? n : n - 1); };
+FN.VAR = (a, c) => variance(nums(a, c), false); FN['VAR.S'] = FN.VAR;
+FN.VARP = (a, c) => variance(nums(a, c), true); FN['VAR.P'] = FN.VARP;
+FN.STDEV = (a, c) => Math.sqrt(variance(nums(a, c), false)); FN['STDEV.S'] = FN.STDEV;
+FN.STDEVP = (a, c) => Math.sqrt(variance(nums(a, c), true)); FN['STDEV.P'] = FN.STDEVP;
+FN.MODE = (a, c) => { const x = nums(a, c), cnt = new Map(); let best = null, bn = 1; for (const v of x) { const k = (cnt.get(v) || 0) + 1; cnt.set(v, k); if (k > bn) { bn = k; best = v; } } if (best === null) throw ERR.na; return best; };
+FN['MODE.SNGL'] = FN.MODE;
+FN.AVERAGEA = (a, c) => { let s = 0, n = 0; allVals(a, c, (v, fromRef) => { if (v === null) return; n++; if (typeof v === 'number') s += v; else if (v === true) s += 1; }); if (!n) throw ERR.div; return s / n; };
+FN.MROUND = (a, c) => { need(a, 2); const v = nv(a[0], c), m = nv(a[1], c); if (!m) return 0; if (v * m < 0) throw ERR.num; return ROUNDX(v / m, 0) * m; };
+FN.QUOTIENT = (a, c) => { need(a, 2); const d = nv(a[1], c); if (!d) throw ERR.div; return Math.trunc(nv(a[0], c) / d); };
+FN.EVEN = (a, c) => { const v = nv(a[0], c), r = Math.ceil(Math.abs(v) / 2) * 2; return v < 0 ? -r : r; };
+FN.ODD = (a, c) => { const v = nv(a[0], c); let r = Math.ceil(Math.abs(v)); if (r % 2 === 0) r++; return v < 0 ? -r : r; };
 FN.COUNT = (a, c) => { let n = 0; allVals(a, c, (v, fromRef) => { if (typeof v === 'number') n++; else if (!fromRef && typeof v === 'string' && parseNumberText(v)) n++; }); return n; };
 FN.COUNTA = (a, c) => { let n = 0; allVals(a, c, v => { if (v !== null) n++; }); return n; };
 FN.COUNTBLANK = (a, c) => { need(a, 1); const g = ev(a[0], c); if (!isRng(g)) return g === null || g === '' ? 1 : 0; let n = 0; for (let r = g.r1; r <= Math.min(g.r2, g.r1 + 100000); r++) for (let cc = g.c1; cc <= Math.min(g.c2, g.c1 + 500); cc++) { const v = cellVal(g.si, r, cc); if (v === null || v === '') n++; } return n; };
@@ -6339,6 +6365,23 @@ const FN_HELP = {
   MAX: ['MAX(number1, [number2], ...)', 'The largest number.', 'Statistical'],
   MIN: ['MIN(number1, [number2], ...)', 'The smallest number.', 'Statistical'],
   MEDIAN: ['MEDIAN(number1, [number2], ...)', 'The middle number.', 'Statistical'],
+  RANK: ['RANK(number, ref, [order])', 'Where a number places in a list (1 = largest).', 'Statistical'],
+  'RANK.EQ': ['RANK.EQ(number, ref, [order])', 'Where a number places in a list (1 = largest).', 'Statistical'],
+  STDEV: ['STDEV(number1, [number2], ...)', 'How spread out the numbers are (sample).', 'Statistical'],
+  'STDEV.S': ['STDEV.S(number1, [number2], ...)', 'How spread out the numbers are (sample).', 'Statistical'],
+  STDEVP: ['STDEVP(number1, [number2], ...)', 'How spread out the numbers are (whole population).', 'Statistical'],
+  'STDEV.P': ['STDEV.P(number1, [number2], ...)', 'How spread out the numbers are (whole population).', 'Statistical'],
+  VAR: ['VAR(number1, [number2], ...)', 'Variance of a sample.', 'Statistical'],
+  'VAR.S': ['VAR.S(number1, [number2], ...)', 'Variance of a sample.', 'Statistical'],
+  VARP: ['VARP(number1, [number2], ...)', 'Variance of a whole population.', 'Statistical'],
+  'VAR.P': ['VAR.P(number1, [number2], ...)', 'Variance of a whole population.', 'Statistical'],
+  MODE: ['MODE(number1, [number2], ...)', 'The number that appears most often.', 'Statistical'],
+  'MODE.SNGL': ['MODE.SNGL(number1, [number2], ...)', 'The number that appears most often.', 'Statistical'],
+  AVERAGEA: ['AVERAGEA(value1, [value2], ...)', 'Average counting text as 0 and TRUE as 1.', 'Statistical'],
+  MROUND: ['MROUND(number, multiple)', 'Rounds to the nearest multiple.', 'Math'],
+  QUOTIENT: ['QUOTIENT(numerator, denominator)', 'The whole-number part of a division.', 'Math'],
+  EVEN: ['EVEN(number)', 'Rounds up to the next even number.', 'Math'],
+  ODD: ['ODD(number)', 'Rounds up to the next odd number.', 'Math'],
   LARGE: ['LARGE(range, k)', 'The k-th largest number.', 'Statistical'],
   SMALL: ['SMALL(range, k)', 'The k-th smallest number.', 'Statistical'],
   PRODUCT: ['PRODUCT(number1, [number2], ...)', 'Multiplies all the numbers.', 'Math'],
@@ -6739,12 +6782,15 @@ function renderGrid() {
         if (d.h) inner = d.h;
         else {
           let t = d.t;
-          const w = mg ? 99999 : colW(S, c) - 5 - ((st && st.ind) || 0) * 9;
-          if (d.n && !(st && st.wrap) && textW(t, st) > w) {
+          // Room for the text: the column minus a little padding (Excel lets numbers use most of the cell's padding)
+          const w = mg ? 99999 : colW(S, c) - 3 - ((st && st.ind) || 0) * 9;
+          // General numbers shorten to the digits Excel shows (it keeps a wider margin for those)
+          const wg = w - 2;
+          if (d.n && !(st && st.wrap) && textW(t, st) > (d.g ? wg : w)) {
             if (d.g) { // general numbers lose decimals (or switch to 1.2E+13 style) before turning into ####
               const expo = k => val.toExponential(k).replace(/\.?0+e/, 'e').replace('e', 'E').replace(/E(\d)/, 'E+$1');
-              if (Number.isInteger(val) || Math.abs(val) >= 1e11 || Math.abs(val) < 1e-9) { for (let k = 5; k >= 0 && textW(t, st) > w; k--) t = expo(k); }
-              else { let p = 10; while (p > 1 && textW(t, st) > w) { p--; t = String(parseFloat(val.toPrecision(p))); } }
+              if (Number.isInteger(val) || Math.abs(val) >= 1e11 || Math.abs(val) < 1e-9) { for (let k = 5; k >= 0 && textW(t, st) > wg; k--) t = expo(k); }
+              else { let p = 10; while (p > 1 && textW(t, st) > wg) { p--; t = String(parseFloat(val.toPrecision(p))); } }
               if (textW(t, st) > w) t = '#'.repeat(Math.max(1, Math.floor(w / textW('#', st))));
             } else t = '#'.repeat(Math.max(1, Math.floor(w / textW('#', st))));
           }
@@ -7313,7 +7359,8 @@ function gridKey(ev) {
       case 'i': toggleStyle('i'); break;
       case 'u': toggleStyle('u'); break;
       case 'a': setSel(0, 0, MAXR, MAXC, false); break;
-      case 'f': case 'h': openFind(); break;
+      case 'f': openFind(false); break;
+      case 'h': openFind(true); break;
       case 'p': printSheet(); break;
       case 's': saveNow(); break;
       case 'o': runCmd('open'); break;
@@ -7364,8 +7411,17 @@ function gridKey(ev) {
 kb.addEventListener('input', () => { const v = kb.value; kb.value = ''; if (v && !edit) startEdit('enter', v); });
 function goName(txt) {
   const s = String(txt).trim().toUpperCase().replace(/\$/g, '');
+  // Whole columns (A:C) or whole rows (2:5), like Excel's Name Box
+  const mc = /^([A-Z]{1,3}):([A-Z]{1,3})$/.exec(s), mr = /^(\d{1,7}):(\d{1,7})$/.exec(s);
+  if (mc || mr) {
+    const a = mc ? colNum(mc[1]) : +mr[1] - 1, b = mc ? colNum(mc[2]) : +mr[2] - 1;
+    if (a < 0 || b < 0 || (mc ? Math.max(a, b) > MAXC : Math.max(a, b) > MAXR)) { msgBox('That is outside the sheet.'); updateBar(); return; }
+    if (mc) setSel(0, Math.min(a, b), MAXR, Math.max(a, b)); else setSel(Math.min(a, b), 0, Math.max(a, b), MAXC);
+    focusGrid(); updateBar(); return;
+  }
   const m = /^([A-Z]{1,3})(\d{1,7})(?::([A-Z]{1,3})(\d{1,7}))?$/.exec(s);
-  if (!m) { msgBox('Type a cell address like B5, or a range like A1:C10.'); updateBar(); return; }
+  if (!m) { msgBox('Type a cell address like B5, a range like A1:C10, or whole columns like A:C.'); updateBar(); return; }
+  if (+m[2] - 1 > MAXR || colNum(m[1]) > MAXC || (m[3] && (+m[4] - 1 > MAXR || colNum(m[3]) > MAXC))) { msgBox('That is outside the sheet.'); updateBar(); return; }
   const r1 = +m[2] - 1, c1 = colNum(m[1]);
   if (m[3]) setSel(r1, c1, +m[4] - 1, colNum(m[3])); else setSel(r1, c1);
   focusGrid(); updateBar();
@@ -7639,16 +7695,53 @@ function pasteClip() {
   const sr = g.r2 === MAXR ? h : g.r2 - g.r1 + 1, sc = g.c2 === MAXC ? w : g.c2 - g.c1 + 1;
   const tr = sr % h === 0 ? sr / h : 1, tc = sc % w === 0 ? sc / w : 1;
   const c0 = clip;
+  const moving = c0.cut && src;
+  const srcSi = moving ? wb.sheets.indexOf(src) : -1, dstSi = wb.active;
+  // A cut is moved once (Excel does not repeat it over a bigger selection)
+  const rt = moving ? 1 : tr, ct = moving ? 1 : tc;
   const ok = mutate(() => {
-    if (c0.cut && src) { for (let r = c0.r1; r <= c0.r2; r++) for (let c = c0.c1; c <= c0.c2; c++) delete src.cells[key(r, c)]; }
-    for (let ti = 0; ti < tr; ti++) for (let tj = 0; tj < tc; tj++) for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) {
+    if (moving) { for (let r = c0.r1; r <= c0.r2; r++) for (let c = c0.c1; c <= c0.c2; c++) delete src.cells[key(r, c)]; }
+    for (let ti = 0; ti < rt; ti++) for (let tj = 0; tj < ct; tj++) for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) {
       const r = g.r1 + ti * h + i, c = g.c1 + tj * w + j, k = key(r, c);
       const cell = c0.cells[i][j] ? clone(c0.cells[i][j]) : null;
-      if (cell && typeof cell.v === 'string' && cell.v[0] === '=' && !c0.cut) cell.v = shiftFormula(cell.v, r - (c0.r1 + i), c - (c0.c1 + j));
+      if (cell && typeof cell.v === 'string' && cell.v[0] === '=') {
+        if (!c0.cut) cell.v = shiftFormula(cell.v, r - (c0.r1 + i), c - (c0.c1 + j));
+        // A formula moved to another sheet keeps pointing at the sheet it came from
+        else if (moving && srcSi !== dstSi) cell.v = qualifyRefs(cell.v, src.name);
+      }
       if (cell) S.cells[k] = cell; else delete S.cells[k];
     }
+    if (moving && srcSi >= 0) moveRefs(srcSi, c0, dstSi, g.r1 - c0.r1, g.c1 - c0.c1);
   });
-  if (ok) { setSel(g.r1, g.c1, g.r1 + tr * h - 1, g.c1 + tc * w - 1, false); if (c0.cut) { clip = null; renderSel(); } }
+  if (ok) { setSel(g.r1, g.c1, g.r1 + rt * h - 1, g.c1 + ct * w - 1, false); if (c0.cut) { clip = null; renderSel(); } }
+}
+// References without a sheet name get one (used when a formula moves to another sheet)
+function qualifyRefs(f, sheetName) {
+  let toks; try { toks = tokenize(f.slice(1)); } catch { return f; }
+  let ch = false;
+  for (const t of toks) if (t.k === 'ref' && !t.bad && t.sheet == null) { t.sheet = sheetName; ch = true; }
+  return ch ? '=' + joinToks(toks) : f;
+}
+// Cut and paste: every formula that pointed at the moved cells now points at their new place, as in Excel.
+// A range moves only when all of it was inside the moved block.
+function moveRefs(srcSi, g, dstSi, dr, dc) {
+  const inBlock = p => p && p.r !== undefined && p.c !== undefined && p.r >= g.r1 && p.r <= g.r2 && p.c >= g.c1 && p.c <= g.c2;
+  wb.sheets.forEach((T, ti) => {
+    for (const cell of Object.values(T.cells)) {
+      if (typeof cell.v !== 'string' || cell.v[0] !== '=') continue;
+      let toks; try { toks = tokenize(cell.v.slice(1)); } catch { continue; }
+      let ch = false;
+      for (const t of toks) {
+        if (t.k !== 'ref' || t.bad || (t.kind !== 'cell' && t.kind !== 'range')) continue;
+        if ((t.sheet == null ? ti : sheetIdx(t.sheet)) !== srcSi) continue;
+        if (!inBlock(t.a) || (t.b && !inBlock(t.b))) continue;
+        for (const p of [t.a, t.b]) if (p) { p.r += dr; p.c += dc; }
+        if (dstSi !== srcSi) t.sheet = ti === dstSi ? null : wb.sheets[dstSi].name;
+        ch = true;
+      }
+      if (ch) cell.v = '=' + joinToks(toks);
+    }
+  });
 }
 function parseTSV(text) {
   const rows = []; let row = [], f = '', q = false;
@@ -8368,7 +8461,55 @@ function zoomToSel() {
 }
 
 /* ===================== find ===================== */
-function openFind() { const f = $('findbar'); f.hidden = false; $('findMsg').textContent = ''; const q = $('findQ'); q.focus(); q.select(); }
+function openFind(replace) {
+  const f = $('findbar'); f.hidden = false; f.classList.toggle('replace', !!replace);
+  $('findTitle').textContent = replace ? 'Find and Replace' : 'Find';
+  findMsg('');
+  const q = $('findQ'); q.focus(); q.select();
+}
+function findMsg(t, ok) { const m = $('findMsg'); m.textContent = t; m.classList.toggle('ok', !!ok); }
+// Cell contents as typed (a formula's text, a number as digits)
+function rawText(cell) { return cell.v === undefined || cell.v === null ? '' : typeof cell.v === 'string' ? (cell.v[0] === "'" ? cell.v.slice(1) : cell.v) : typeof cell.v === 'boolean' ? (cell.v ? 'TRUE' : 'FALSE') : String(cell.v); }
+// Replace in one cell's contents; false when nothing matched or the result would not be a valid formula
+function replaceInCell(S, r, c, q, rep) {
+  const cell = S.cells[key(r, c)]; if (!cell) return false;
+  const raw = rawText(cell); if (!raw.toLowerCase().includes(q.toLowerCase())) return false;
+  const next = raw.replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), () => rep);
+  // A formula whose brackets no longer match is left alone (typing would add the missing ones; Replace must not guess)
+  if (next[0] === '=') { const bare = next.replace(/"[^"]*"/g, ''); if ((bare.match(/\(/g) || []).length !== (bare.match(/\)/g) || []).length) return false; }
+  let p; try { p = parseInput(next); } catch { return false; }
+  // A number stays a number in its own format (a percent cell is not divided by 100 again)
+  if (p && typeof cell.v === 'number' && typeof p.v === 'number' && !p.nf) { cell.v = p.v; return true; }
+  setParsed(S, r, c, p);
+  return true;
+}
+function replaceOne() {
+  const q = $('findQ').value.trim(); if (!q) return;
+  const S = sheet();
+  let done = false;
+  mutate(() => { done = replaceInCell(S, sel.ar, sel.ac, q, $('findR').value); });
+  findNext();
+  if (done && !$('findMsg').textContent) findMsg('Replaced 1.', true);
+}
+function replaceAll() {
+  const q = $('findQ').value.trim(); if (!q) return;
+  const rep = $('findR').value, all = $('findAll').checked;
+  let n = 0, bad = 0;
+  mutate(() => {
+    for (const si of all ? [...wb.sheets.keys()] : [wb.active]) {
+      const S = wb.sheets[si];
+      for (const k of Object.keys(S.cells)) {
+        const [r, c] = k.split(',').map(Number);
+        if (!rawText(S.cells[k]).toLowerCase().includes(q.toLowerCase())) continue;
+        if (replaceInCell(S, r, c, q, rep)) n++; else bad++;
+      }
+    }
+  });
+  findMsg(n ? `All done. We made ${n} replacement${n === 1 ? '' : 's'}.${bad ? ` ${bad} left as they were (it would have broken a formula).` : ''}` : "We couldn't find anything to replace.", n > 0);
+}
+$('findToRep').addEventListener('click', () => openFind(true));
+$('findRep').addEventListener('click', replaceOne);
+$('findRepAll').addEventListener('click', replaceAll);
 function closeFind() { $('findbar').hidden = true; focusGrid(); }
 function findNext() {
   const q = $('findQ').value.trim().toLowerCase(); if (!q) return;
@@ -8589,7 +8730,16 @@ async function buildXlsx() {
       const cols = byRow.get(r).sort((a, b) => a - b);
       let rowXml = '';
       for (const c of cols) {
-        const cell = S.cells[key(r, c)], st = effStyle(S, r, c, cell);
+        const cell = S.cells[key(r, c)];
+        let st = effStyle(S, r, c, cell);
+        // A formula shown with a format it picked up (SUM of dollars, MAX of dates) keeps it in the file, as Excel does
+        if (typeof cell.v === 'string' && cell.v[0] === '=' && (!st || !st.nf || st.nf === 'general')) {
+          const val = cellVal(si, r, c);
+          if (typeof val === 'number') {
+            let h = null; try { h = hintOf(getAst(cell.v.slice(1)), { si, r, c }); } catch {}
+            if (h && h.nf) { st = Object.assign({}, st || {}, h); }
+          }
+        }
         const s = styleId(st), ref = A1(r, c);
         maxR = Math.max(maxR, r); maxC = Math.max(maxC, c);
         const sa = s ? ` s="${s}"` : '';
@@ -8599,7 +8749,7 @@ async function buildXlsx() {
         else if (typeof v === 'boolean') rowXml += `<c r="${ref}"${sa} t="b"><v>${v ? 1 : 0}</v></c>`;
         else if (v[0] === '=' && v.length > 1) {
           const val = cellVal(si, r, c);
-          const f = `<f>${xmlEsc(v.slice(1).replace(/\b(XLOOKUP|IFS|MAXIFS|MINIFS|TEXTJOIN|CONCAT|SWITCH|XOR|DAYS|CEILING\.MATH|FLOOR\.MATH)\(/g, '_xlfn.$1('))}</f>`;
+          const f = `<f>${xmlEsc(v.slice(1).replace(/(^|[^\w.])(XLOOKUP|IFS|MAXIFS|MINIFS|TEXTJOIN|CONCAT|SWITCH|XOR|DAYS|CEILING\.MATH|FLOOR\.MATH|STDEV\.S|STDEV\.P|VAR\.S|VAR\.P|RANK\.EQ|MODE\.SNGL)\(/g, (m, pre, name) => pre + '_xlfn.' + name + '('))}</f>`;
           if (isErr(val)) rowXml += `<c r="${ref}"${sa} t="e">${f}<v>${val.c}</v></c>`;
           else if (typeof val === 'string') rowXml += `<c r="${ref}"${sa} t="str">${f}<v>${xmlEsc(val)}</v></c>`;
           else if (typeof val === 'boolean') rowXml += `<c r="${ref}"${sa} t="b">${f}<v>${val ? 1 : 0}</v></c>`;
@@ -8699,7 +8849,7 @@ function classifyCode(code) {
   const dpOf = () => { const m = /\.([0#?]+)/.exec(bare); return m ? m[1].length : 0; };
   if (/^general$/i.test(bare.trim())) return { nf: 'general' };
   if (bare.trim() === '@') return { nf: 'text' };
-  if (/[dy]/i.test(bare) || (/m/i.test(bare) && !/[0#?]/.test(bare))) { if (/h/i.test(bare)) return /[dy]/i.test(bare) ? { nf: 'datetime' } : { nf: 'time' }; if (/dddd|mmmm/i.test(bare)) return { nf: 'longdate' }; if (/^\s*m{1,2}[\/\-]d{1,2}[\/\-]y{2,4}\s*$/i.test(bare)) return { nf: 'date' }; return { nf: 'custom', code }; }
+  if (/[dy]/i.test(bare) || (/m/i.test(bare) && !/[0#?]/.test(bare))) { if (/h/i.test(bare)) return /[dy]/i.test(bare) ? { nf: 'datetime' } : { nf: 'time' }; if (/dddd/i.test(bare) && /mmmm/i.test(bare)) return { nf: 'longdate' }; /* "mmmm d, yyyy" has no weekday: kept as its own format below */ if (/^\s*m{1,2}[\/\-]d{1,2}[\/\-]y{2,4}\s*$/i.test(bare)) return { nf: 'date' }; return { nf: 'custom', code }; }
   if (/h/i.test(bare) && /:/.test(bare)) return { nf: 'time' };
   if (/%/.test(bare)) return { nf: 'percent', dp: dpOf() };
   const money = /\$|€|£|¥/.test(code);
@@ -9123,7 +9273,7 @@ function fit() {
   // Browsers disagree on whether boxes under zoom are reported zoomed; work it out from the host itself.
   const k = HOST.offsetHeight > 0 && hr.height > 0 ? hr.height / HOST.offsetHeight : z;
   const top = Math.max(0, (hr.top + scrollY) / k);
-  const h = Math.max(100,Math.floor(innerHeight / z - top));
+  const h = Math.max(60, Math.floor(innerHeight / z - top));
   // Short window: fold the ribbon away like Excel does; a ribbon tab opens it on top of the sheet.
   ROOT.classList.toggle('short', h < 380);
   ROOT.classList.toggle('tiny', h < 230);

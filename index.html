@@ -11427,6 +11427,7 @@ ${records}` , cache_control: { type: 'ephemeral' } },
       if (!fi) openFolderImport();
       const gen = fi.gen;
       const existing = await getAllDocsFromDB();
+      if (!fi || fi.gen !== gen) return;
       const have = new Set(existing.map(d => `${d.fileName}|${d.size}`));
       const seen = new Set();
       fi.files = []; fi.skipped = []; fi.newCats = {};
@@ -11469,6 +11470,8 @@ ${records}` , cache_control: { type: 'ephemeral' } },
               if (ocr) item.text = (await ocr.recognize(item.file)).data.text;
             }
           } catch (e) { /* unreadable: sorted by its name only */ }
+          // Closed (or started over) while this file was being read: stop quietly
+          if (!fi || fi.gen !== gen) return;
           if (item.text) fiClassify(item);
           fi.done++;
         }
@@ -11724,7 +11727,10 @@ ${records}` , cache_control: { type: 'ephemeral' } },
           const inDir = files.filter(f => f.dir === dir);
           const tags = [...new Set(inDir.map(f => fiFinalCat(f)))];
           const id = `folder-${Date.now()}-${n}-${Math.random().toString(36).substring(2, 7)}`;
-          state.docFolders.push({ id, name: dir.split('/').pop(), doctor: '', appointmentId: '', notes: dir.includes('/') ? `From ${dir}` : '', tags, createdAt: new Date().toISOString() });
+          // "Mom/Dentist/2024" → "Dentist / 2024" (the folder she picked is left off, unless the files sit right in it)
+          const parts = dir.split('/');
+          const name = parts.length > 1 ? parts.slice(1).join(' / ') : parts[0];
+          state.docFolders.push({ id, name, doctor: '', appointmentId: '', notes: dir.includes('/') ? `From ${dir}` : '', tags, createdAt: new Date().toISOString() });
           folderIds[dir] = id;
         });
         if (dirs.length && !saveOrUndo(before)) { showToast('⚠️ The folders could not be saved. Nothing was added.'); return; }
