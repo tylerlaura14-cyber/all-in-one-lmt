@@ -1775,6 +1775,10 @@ html body [data-tint][data-tint][data-tint] :is(.w-8.h-8, .w-9.h-9, .w-10.h-10).
             <span><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span>
             <span>+ New Folder</span>
           </button>
+          <button onclick="openFolderImport()" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/25 text-xs font-bold rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer">
+            <span><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span>
+            <span>Upload Folder</span>
+          </button>
           <button onclick="openDocumentUploadModal('', activeVaultFolderId)" class="px-4 py-2 bg-white text-blue-800 hover:bg-blue-50 text-xs font-bold rounded-xl shadow-md transition flex items-center space-x-1.5 cursor-pointer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
             <span>Upload Document</span>
@@ -1854,6 +1858,7 @@ html body [data-tint][data-tint][data-tint] :is(.w-8.h-8, .w-9.h-9, .w-10.h-10).
         </div>
       </div>
 
+      <div id="vaultWaitingBar" class="hidden space-y-2"></div>
       <div id="vaultList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
     </div>
 
@@ -2243,6 +2248,28 @@ html body [data-tint][data-tint][data-tint] :is(.w-8.h-8, .w-9.h-9, .w-10.h-10).
   </div>
 
   <!-- Document Upload Modal -->
+  <!-- Upload a whole folder: files are sorted into categories automatically -->
+  <div id="folderImportModal" class="hidden fixed inset-0 z-50 flex items-start justify-center bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto no-print">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 dark:border-slate-800 relative my-auto max-h-[90vh] flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center space-x-2">
+          <span class="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-lg bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span>
+          <div>
+            <h3 class="text-base font-bold text-slate-800 dark:text-slate-100">Upload a Folder</h3>
+            <p class="text-xs text-slate-400">Every PDF and picture inside is sorted into the right category for you</p>
+          </div>
+        </div>
+        <button onclick="closeFolderImport()" class="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg" aria-label="Close">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="fiBody" class="py-4 overflow-y-auto flex-1 min-h-0 pr-1 text-sm"></div>
+      <div id="fiFoot" class="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-end gap-2"></div>
+      <input type="file" id="fiFolderInput" webkitdirectory directory multiple class="hidden" onchange="fiPicked(this)">
+      <input type="file" id="fiFilesInput" multiple accept="application/pdf,image/*" class="hidden" onchange="fiPicked(this)">
+    </div>
+  </div>
+
   <div id="documentUploadModal" class="hidden fixed inset-0 z-50 flex items-start justify-center bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto no-print">
     <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 dark:border-slate-800 relative my-auto max-h-[88vh] flex flex-col overflow-hidden">
       <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -8864,6 +8891,7 @@ ${records}` , cache_control: { type: 'ephemeral' } },
       const breadcrumbBar = document.getElementById('vaultFolderBreadcrumbBar');
       const categoryFilterContainer = document.getElementById('vaultCategoryFilterContainer');
       const billSubFilters = document.getElementById('vaultBillSubFilters');
+      fiRenderWaiting(activeVaultFolderId ? [] : allDocs);
 
       // -------------------------------------------------------------
       // CASE 1: USER IS VIEWING INSIDE A SPECIFIC FOLDER
@@ -11195,8 +11223,18 @@ ${records}` , cache_control: { type: 'ephemeral' } },
       if (e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files')) e.preventDefault();
     }));
     document.getElementById('editDocFolderSelect')?.addEventListener('change', () => renderEditTags());
-    dropZone.addEventListener('drop', (e) => {
+    dropZone.addEventListener('drop', async (e) => {
       const dt = e.dataTransfer;
+      // A folder, or several files at once, goes to Upload Folder, which sorts each one
+      const entries = [...(dt.items || [])].map(i => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+      if (entries.some(en => en.isDirectory) || dt.files.length > 1) {
+        const listPromise = fiFromDrop(dt);
+        closeModal('documentUploadModal');
+        openFolderImport();
+        const list = await listPromise;
+        if (list.length) fiStart(list);
+        return;
+      }
       const file = dt.files[0];
       if (file && acceptUploadFile(file)) {
         stagedUploadFile = file;
@@ -11211,6 +11249,573 @@ ${records}` , cache_control: { type: 'ephemeral' } },
         }
       }
     });
+
+    /* =====================================================================
+       FOLDER UPLOAD — a whole folder (or many files) at once, each file sorted
+       into a category automatically. Sorting reads folder names, file names and
+       the words inside each PDF or picture, on this device. With an Ask Claude key
+       saved it can also ask Claude about the files it could not place.
+       A category that does not exist yet is only made after she says yes; a "no"
+       files those documents under Other and remembers the idea
+       (doc.waitingCategory), so the Vault can offer it again later.
+       ===================================================================== */
+    const fiWords = (...w) => new RegExp('\\b(?:' + w.join('|') + ')\\b', 'gi');
+    // Categories the app has built in (used when they still exist)
+    const FI_RULES = [
+      { cat: 'Medical Bills', re: fiWords('amount due', 'balance due', 'total due', 'payment due', 'please pay', 'pay this amount', 'billing statement', 'patient statement', 'statement date', 'invoice', 'amount you owe', 'account balance', 'bills?', 'billing', 'receipts?', 'itemized') },
+      { cat: 'Labs', re: fiWords('labs?', 'lab results?', 'laboratory', 'blood ?work', 'blood tests?', 'cbc', 'cmp', 'metabolic panel', 'lipid panel', 'a1c', 'hemoglobin', 'urinalysis', 'specimen', 'reference range', 'quest diagnostics', 'labcorp', 'pathology', 'biopsy', 'test results?') },
+      { cat: 'Medications', re: fiWords('prescriptions?', 'rx', 'pharmacy', 'medications?', 'meds', 'refills?', 'drug list', 'medication list', 'pill', 'pills') },
+      { cat: 'Dental', re: fiWords('dental', 'dentist', 'dentistry', 'teeth', 'tooth', 'orthodont\\w*', 'periodont\\w*', 'endodont\\w*', 'oral surgery', 'crown', 'root canal', 'cleaning', 'dds', 'dmd', 'implant') },
+      { cat: 'Surgeries', re: fiWords('surgery', 'surgeries', 'surgical', 'operative report', 'op report', 'post-?op', 'pre-?op', 'anesthesia', 'procedure', 'discharge instructions') },
+      { cat: 'Urology', re: fiWords('urology', 'urologist', 'urolog\\w*', 'bladder', 'kidney stones?', 'prostate', 'psa', 'urinary') },
+      { cat: 'Rheumatology', re: fiWords('rheumatology', 'rheumatolog\\w*', 'arthritis', 'lupus', 'rheumatoid', 'fibromyalgia', 'gout', 'sed rate', 'ana panel', 'methotrexate') },
+      { cat: 'Mental Health', re: fiWords('mental health', 'psychiatr\\w*', 'psycholog\\w*', 'therapist', 'therapy notes', 'counseling', 'counselor', 'depression', 'anxiety', 'behavioral health', 'lcsw') },
+      { cat: 'Vaccines', re: fiWords('vaccines?', 'vaccinations?', 'immunizations?', 'flu shot', 'covid', 'booster', 'tetanus', 'tdap', 'shingles', 'shingrix', 'pneumonia shot', 'pneumovax') },
+    ];
+    // Categories she may not have yet: offered as new ones (she says yes or no first)
+    const FI_NEW_RULES = [
+      { cat: 'Cardiology', re: fiWords('cardiology', 'cardiolog\\w*', 'heart', 'ekg', 'ecg', 'echocardiogram', 'echo', 'stress test', 'holter', 'arrhythmia', 'blood pressure') },
+      { cat: 'Dermatology', re: fiWords('dermatology', 'dermatolog\\w*', 'skin', 'rash', 'mole', 'eczema', 'psoriasis') },
+      { cat: 'Neurology', re: fiWords('neurology', 'neurolog\\w*', 'migraines?', 'seizures?', 'nerve', 'eeg', 'emg', 'stroke', 'neuropathy') },
+      { cat: 'Eye Care', re: fiWords('eye', 'eyes', 'vision', 'ophthalmolog\\w*', 'optometr\\w*', 'glasses', 'contacts', 'retina', 'cataracts?', 'glaucoma') },
+      { cat: 'Imaging', re: fiWords('x-?rays?', 'mri', 'ct scan', 'cat scan', 'ultrasound', 'mammogram', 'radiology', 'imaging', 'dexa', 'bone density', 'scan report') },
+      { cat: 'Insurance', re: fiWords('insurance', 'explanation of benefits', 'eob', 'this is not a bill', 'medicare', 'medicaid', 'claims?', 'member id', 'policy', 'coverage', 'deductible', 'copay', 'prior authorization') },
+      { cat: 'Gastroenterology', re: fiWords('gastro\\w*', 'gi', 'colonoscopy', 'endoscopy', 'stomach', 'colon', 'liver', 'digestive') },
+      { cat: 'Orthopedics', re: fiWords('orthopedic\\w*', 'orthopaedic\\w*', 'ortho', 'fracture', 'knee', 'hip', 'shoulder', 'spine', 'back pain', 'sports medicine') },
+      { cat: 'Physical Therapy', re: fiWords('physical therapy', 'pt notes?', 'rehab', 'rehabilitation', 'occupational therapy') },
+      { cat: 'Ear, Nose & Throat', re: fiWords('ent', 'otolaryngolog\\w*', 'sinus', 'ear', 'ears', 'throat', 'tonsils?') },
+      { cat: 'Hearing', re: fiWords('hearing', 'audiolog\\w*', 'hearing aids?', 'audiogram') },
+      { cat: "Women's Health", re: fiWords('ob-?gyn', 'gynecolog\\w*', 'obstetric\\w*', 'pap smear', 'pap', 'pregnan\\w*', 'prenatal') },
+      { cat: 'Lungs & Breathing', re: fiWords('pulmonary', 'pulmonolog\\w*', 'lungs?', 'asthma', 'copd', 'breathing', 'spirometry', 'inhaler') },
+      { cat: 'Endocrinology', re: fiWords('endocrin\\w*', 'thyroid', 'diabetes', 'diabetic', 'insulin', 'hormones?') },
+      { cat: 'Cancer Care', re: fiWords('oncology', 'oncolog\\w*', 'cancer', 'tumor', 'chemo\\w*', 'radiation therapy') },
+      { cat: 'Allergy', re: fiWords('allerg\\w*', 'immunolog\\w*', 'allergy shots?') },
+      { cat: 'Foot Care', re: fiWords('podiatr\\w*', 'foot', 'feet', 'ankle', 'bunion') },
+      { cat: 'Sleep', re: fiWords('sleep study', 'sleep apnea', 'cpap', 'polysomnogra\\w*', 'sleep') },
+      { cat: 'Hospital & ER', re: fiWords('emergency room', 'emergency department', 'er visit', 'urgent care', 'hospital', 'admission', 'discharge summary', 'inpatient') },
+      { cat: 'Kidney Care', re: fiWords('nephrolog\\w*', 'kidneys?', 'dialysis', 'renal') },
+    ];
+    const FI_SYSTEM_FILES = /^(\.|~\$)|^(thumbs\.db|desktop\.ini|\.ds_store)$/i;
+
+    let fi = null; // the folder upload in progress: { stage, files, skipped, newCats, keepFolders, useAi, ... }
+
+    function fiEsc(s) { return escapeHtml(String(s ?? '')); }
+    function fiHasCategory(name) { return getAvailableDocTags().some(t => t.id.toLowerCase() === String(name).toLowerCase()); }
+    function fiCategoryName(name) { const t = getAvailableDocTags().find(x => x.id.toLowerCase() === String(name).toLowerCase()); return t ? t.id : name; }
+    function fiNameTaken(name) {
+      const lower = String(name).toLowerCase();
+      return [...getActiveSpecialties().map(sp => sp.name), ...RESERVED_SPECIALTY_NAMES].some(n => n.toLowerCase() === lower);
+    }
+
+    function openFolderImport() {
+      fi = { stage: 'pick', files: [], skipped: [], newCats: {}, keepFolders: false, useAi: !!aiGetKey(), gen: (fi?.gen || 0) + 1 };
+      fiRender();
+      openModal('folderImportModal');
+    }
+    function closeFolderImport() {
+      if (fi && fi.stage === 'saving') { showToast('⏳ Still adding the documents. Please wait a moment.'); return; }
+      if (fi) fi.gen++;
+      fi = null;
+      closeModal('folderImportModal');
+    }
+
+    // Scores a piece of text against every rule; words in folder and file names count more than words inside the file
+    function fiScore(scores, text, weight, cap) {
+      if (!text) return;
+      for (const r of [...FI_RULES, ...FI_NEW_RULES, ...fiCustomRules()]) {
+        const m = text.match(r.re);
+        if (m) scores[r.cat] = (scores[r.cat] || 0) + Math.min(m.length, cap) * weight;
+      }
+    }
+    // Categories she made herself are matched by their own name
+    function fiCustomRules() {
+      return (state.customSpecialties || []).map(c => ({ cat: c.name, re: new RegExp('\\b' + c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi') }));
+    }
+    // The category each candidate stands for right now: an existing one, or a suggested new one
+    function fiResolve(cat) {
+      if (fiHasCategory(cat)) return { cat: fiCategoryName(cat), isNew: false };
+      if (isSpecialtyDeleted(cat) || fiNameTaken(cat)) return null; // deleted on purpose, or a reserved name
+      return { cat, isNew: true };
+    }
+    function fiPickCategory(scores, textOnly) {
+      const ranked = Object.entries(scores).filter(([, s]) => s >= (textOnly ? 3 : 4)).sort((a, b) => b[1] - a[1]);
+      for (const [cat] of ranked) { const r = fiResolve(cat); if (r) return r; }
+      return null;
+    }
+    function fiClassify(item) {
+      const dirText = item.dir.replace(/[\/_\-.]+/g, ' ');
+      const nameText = item.file.name.replace(/\.[^.]+$/, '').replace(/[_\-.]+/g, ' ');
+      const text = item.text || '';
+      const names = {};
+      fiScore(names, dirText, 6, 2);
+      fiScore(names, nameText, 4, 2);
+      const inside = {};
+      fiScore(inside, text, 1, 6);
+      // An Explanation of Benefits says "this is not a bill"
+      if (/this is not a bill/i.test(text)) { delete inside['Medical Bills']; if (/not a bill/i.test(nameText)) delete names['Medical Bills']; }
+      const all = { ...inside };
+      Object.entries(names).forEach(([k, v]) => { all[k] = (all[k] || 0) + v; });
+      let pick = fiPickCategory(names, false) || fiPickCategory(all, true);
+      item.cat = pick ? pick.cat : null;
+      item.why = pick ? (fiPickCategory(names, false) ? 'from the folder or file name' : 'from the words inside') : '';
+      item.extra = null;
+      // A bill also keeps the specialty it is for (Dental bill → Medical Bills + Dental)
+      const billWords = (all['Medical Bills'] || 0);
+      if (item.cat !== 'Medical Bills' && billWords >= 6 && !/this is not a bill/i.test(text) && fiHasCategory('Medical Bills')) {
+        item.extra = item.cat; item.cat = 'Medical Bills'; item.why = 'looks like a bill';
+      } else if (item.cat === 'Medical Bills') {
+        const second = Object.entries(all).filter(([c, s]) => c !== 'Medical Bills' && s >= 4).sort((a, b) => b[1] - a[1])[0];
+        const r = second && fiResolve(second[0]);
+        if (r && !r.isNew) item.extra = r.cat;
+      }
+      if (item.extra && !fiHasCategory(item.extra)) item.extra = null;
+      if (item.cat === 'Medical Bills') {
+        item.billPaid = /\b(paid in full|zero balance|balance:?\s*\$?\s*0\.00|amount due:?\s*\$?\s*0\.00|thank you for your payment)\b/i.test(text);
+        const amt = text.match(/(?:amount due|balance due|total due|pay this amount|amount you owe|patient balance|balance)[^$\d]{0,40}\$\s*([\d,]+\.\d{2})/i);
+        item.billAmount = amt ? Math.round(Number(amt[1].replace(/,/g, '')) * 100) / 100 : null;
+      }
+    }
+
+    function fiAcceptable(file) {
+      const ok = file.type === 'application/pdf' || (file.type || '').startsWith('image/') || /\.(pdf|png|jpe?g|gif|webp|heic|heif|bmp|tiff?)$/i.test(file.name);
+      if (!ok) return 'Not a PDF or picture';
+      if (file.size > MAX_UPLOAD_BYTES) return `Too big (${formatFileSize(file.size)}; up to 100 MB)`;
+      if (!file.size) return 'Empty file';
+      return '';
+    }
+
+    function fiPicked(input) {
+      const list = [...(input.files || [])].map(file => ({ file, path: file.webkitRelativePath || file.name }));
+      input.value = '';
+      if (list.length) fiStart(list);
+    }
+
+    // Everything inside dropped folders, one level after another
+    // Takes the drop's DataTransfer. Everything is picked up before the first wait: browsers empty it after that.
+    async function fiFromDrop(dt) {
+      const entries = [...(dt.items || [])].map(i => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+      const plain = [...(dt.files || [])].map(file => ({ file, path: file.name }));
+      if (!entries.length) return plain;
+      const out = [];
+      const walk = async entry => {
+        if (entry.isFile) {
+          try { const f = await new Promise((res, rej) => entry.file(res, rej)); out.push({ file: f, path: entry.fullPath.replace(/^\//, '') }); } catch (e) {}
+        } else if (entry.isDirectory) {
+          const reader = entry.createReader();
+          for (;;) {
+            let batch = [];
+            try { batch = await new Promise((res, rej) => reader.readEntries(res, rej)); } catch (e) { break; }
+            if (!batch.length) break;
+            for (const e of batch) await walk(e);
+          }
+        }
+      };
+      for (const e of entries) await walk(e);
+      return out;
+    }
+
+    async function fiStart(list) {
+      if (!fi) openFolderImport();
+      const gen = fi.gen;
+      const existing = await getAllDocsFromDB();
+      const have = new Set(existing.map(d => `${d.fileName}|${d.size}`));
+      const seen = new Set();
+      fi.files = []; fi.skipped = []; fi.newCats = {};
+      for (const { file, path } of list) {
+        if (FI_SYSTEM_FILES.test(file.name)) continue;
+        const why = fiAcceptable(file);
+        if (why) { fi.skipped.push({ name: path, why }); continue; }
+        const key = `${file.name}|${file.size}`;
+        if (have.has(key)) { fi.skipped.push({ name: path, why: 'Already in the Vault' }); continue; }
+        if (seen.has(key)) { fi.skipped.push({ name: path, why: 'Same file twice' }); continue; }
+        seen.add(key);
+        const parts = path.split('/');
+        parts.pop();
+        fi.files.push({ file, path, dir: parts.join('/'), folderName: parts[parts.length - 1] || '', text: '' });
+      }
+      if (!fi.files.length) {
+        fi.stage = 'review';
+        fiRender();
+        return;
+      }
+      fi.stage = 'reading'; fi.done = 0;
+      fiRender();
+      let ocr = null;
+      try {
+        for (const item of fi.files) {
+          if (!fi || fi.gen !== gen) return;
+          fiProgress(`Reading ${item.file.name}`);
+          fiClassify(item);
+          const isPdf = item.file.type === 'application/pdf' || /\.pdf$/i.test(item.file.name);
+          try {
+            if (isPdf) {
+              const { text, firstPage } = await fiPdfText(item.file, !item.cat);
+              item.text = text;
+              if (!item.cat && text.trim().length < 40 && firstPage) {
+                ocr = ocr || await fiOcrWorker();
+                if (ocr) item.text += ' ' + (await ocr.recognize(firstPage)).data.text;
+              }
+            } else if (!item.cat && item.file.size < 25 * 1024 * 1024 && !/\.(heic|heif|tiff?)$/i.test(item.file.name)) {
+              ocr = ocr || await fiOcrWorker();
+              if (ocr) item.text = (await ocr.recognize(item.file)).data.text;
+            }
+          } catch (e) { /* unreadable: sorted by its name only */ }
+          if (item.text) fiClassify(item);
+          fi.done++;
+        }
+      } finally {
+        if (ocr) ocr.terminate().catch(() => {});
+      }
+      if (!fi || fi.gen !== gen) return;
+      const unplaced = fi.files.filter(f => !f.cat);
+      if (unplaced.length && fi.useAi && aiGetKey()) {
+        fiProgress(`Asking Claude about ${unplaced.length} ${unplaced.length === 1 ? 'file' : 'files'} I couldn't place…`);
+        try { await fiAskClaude(unplaced); } catch (e) { console.warn('Folder sort: Claude did not answer', e); }
+        if (!fi || fi.gen !== gen) return;
+      }
+      fi.files.forEach(f => {
+        if (!f.cat) { f.cat = 'Other'; f.why = 'not sure'; }
+        if (!fiHasCategory(f.cat)) fi.newCats[f.cat] = fi.newCats[f.cat] || null;
+      });
+      fi.stage = 'review';
+      fiRender();
+    }
+
+    async function fiPdfText(file, wantPicture) {
+      const lib = await loadPdfJs();
+      const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+      try {
+        let text = '';
+        for (let p = 1; p <= Math.min(pdf.numPages, 3); p++) {
+          const page = await pdf.getPage(p);
+          const tc = await page.getTextContent();
+          text += tc.items.map(i => i.str).join(' ') + '\n';
+          if (text.length > 8000) break;
+        }
+        let firstPage = null;
+        // A scanned PDF has no text: draw page 1 so the text reader can read the picture
+        if (wantPicture && text.trim().length < 40) {
+          const page = await pdf.getPage(1);
+          const vp = page.getViewport({ scale: 1.6 });
+          const c = document.createElement('canvas');
+          c.width = Math.min(2600, Math.round(vp.width)); c.height = Math.min(3400, Math.round(vp.height));
+          await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+          firstPage = c;
+        }
+        return { text: text.slice(0, 8000), firstPage };
+      } finally {
+        pdf.destroy();
+      }
+    }
+
+    async function fiOcrWorker() {
+      try {
+        const T = await loadTesseract();
+        return await T.createWorker('eng', 1, { workerPath: TESSERACT_DIR + 'worker.min.js', corePath: TESSERACT_DIR, langPath: TESSERACT_DIR, workerBlobURL: false });
+      } catch (e) { return null; }
+    }
+
+    // Files the rules could not place go to Claude (her own key), 40 at a time, with a short piece of their text
+    async function fiAskClaude(items) {
+      const key = aiGetKey();
+      const cats = getAvailableDocTags().map(t => t.id);
+      for (let start = 0; start < items.length; start += 40) {
+        const chunk = items.slice(start, start + 40);
+        const list = chunk.map((f, i) => `#${i + 1}\nFile: ${f.path}\nText: ${(f.text || '').replace(/\s+/g, ' ').slice(0, 700) || '(no readable text)'}`).join('\n\n');
+        const prompt = `Sort these medical documents into categories.\nExisting categories: ${cats.join(', ')}.\n\nFor each document answer with one existing category name, spelled exactly as above. Only if none fits and the document clearly belongs to a medical specialty or kind of record, answer with a short new category name instead (1 to 3 words, Title Case, like "Cardiology" or "Eye Care"). If you are not sure, answer "Other".\nReply with only a JSON object mapping each number to a category, like {"1":"Dental","2":"Other"}.\n\n${list}`;
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2026-10-21', 'anthropic-dangerous-direct-browser-access': 'true' },
+          body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 2000, messages: [{ role: 'user', content: prompt }] })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const txt = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+        const m = txt.match(/\{[\s\S]*\}/);
+        if (!m) continue;
+        let map = {};
+        try { map = JSON.parse(m[0]); } catch (e) { continue; }
+        chunk.forEach((f, i) => {
+          let c = String(map[i + 1] || map['#' + (i + 1)] || '').trim().replace(/\s+/g, ' ');
+          if (!c || /^other$/i.test(c)) return;
+          if (fiHasCategory(c)) { f.cat = fiCategoryName(c); f.why = 'sorted by Claude'; return; }
+          // A new name has to look like a category name, and cannot be one she deleted or a reserved one
+          if (c.length > 30 || !/^[A-Za-z][A-Za-z &'\/-]*$/.test(c) || isSpecialtyDeleted(c) || fiNameTaken(c)) return;
+          c = c.replace(/\b[a-z]/g, ch => ch.toUpperCase());
+          f.cat = c; f.why = 'sorted by Claude';
+        });
+      }
+    }
+
+    function fiProgress(msg) {
+      const el = document.getElementById('fiProgress');
+      if (!el || !fi) return;
+      const total = fi.stage === 'saving' ? fi.toSave : fi.files.length;
+      const pct = total ? Math.round((fi.done / total) * 100) : 0;
+      el.querySelector('[data-bar]').style.width = pct + '%';
+      el.querySelector('[data-msg]').textContent = msg;
+      el.querySelector('[data-count]').textContent = `${Math.min(fi.done + 1, total)} of ${total}`;
+    }
+
+    // The category a file ends up in, after her answer about new categories
+    function fiFinalCat(f) { return fi.newCats[f.cat] === 'no' ? 'Other' : f.cat; }
+    function fiOpenQuestions() { return Object.keys(fi.newCats).filter(c => fi.newCats[c] === null && fi.files.some(f => f.cat === c)); }
+
+    function fiRender() {
+      const body = document.getElementById('fiBody'), foot = document.getElementById('fiFoot');
+      if (!body || !fi) return;
+      const btn = (label, onclick, primary, extra = '') => `<button type="button" onclick="${onclick}" ${extra} class="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${primary ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-xs disabled:opacity-40 disabled:cursor-not-allowed' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'}">${label}</button>`;
+
+      if (fi.stage === 'pick') {
+        body.innerHTML = `
+          <div id="fiDrop" class="border-2 border-dashed border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 rounded-2xl p-8 text-center transition">
+            <span class="text-4xl block text-blue-500 mb-2"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span>
+            <p class="font-bold text-slate-800 dark:text-slate-100">Drag a folder here</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 mb-4">or pick one. Folders inside it are included too.</p>
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              ${btn('Choose a Folder…', "document.getElementById('fiFolderInput').click()", true)}
+              ${btn('Choose Files…', "document.getElementById('fiFilesInput').click()", false)}
+            </div>
+          </div>
+          <ul class="mt-4 space-y-1.5 text-xs text-slate-600 dark:text-slate-300 list-disc pl-5">
+            <li>Every PDF and picture is put in the category it belongs to: Dental, Labs, Bills and so on.</li>
+            <li>If something needs a category you don't have yet, you'll be asked before it is made. Say no and it goes in <b>Other</b> for now.</li>
+            <li>You can check and change every file before anything is added.</li>
+            <li>Files already in the Vault are skipped, so nothing is added twice.</li>
+          </ul>`;
+        foot.innerHTML = btn('Cancel', 'closeFolderImport()', false);
+        const drop = document.getElementById('fiDrop');
+        ['dragenter', 'dragover'].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.add('border-blue-500'); }));
+        drop.addEventListener('dragleave', () => drop.classList.remove('border-blue-500'));
+        drop.addEventListener('drop', async e => {
+          e.preventDefault(); drop.classList.remove('border-blue-500');
+          const list = await fiFromDrop(e.dataTransfer);
+          if (list.length) fiStart(list);
+        });
+        return;
+      }
+
+      if (fi.stage === 'reading' || fi.stage === 'saving') {
+        body.innerHTML = `
+          <div id="fiProgress" class="py-10 text-center">
+            <p class="font-bold text-slate-800 dark:text-slate-100 mb-1">${fi.stage === 'saving' ? 'Adding your documents…' : 'Sorting your files…'}</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mb-4"><span data-count></span> · <span data-msg></span></p>
+            <div class="h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden max-w-sm mx-auto"><div data-bar class="h-full bg-blue-600 transition-all" style="width:0%"></div></div>
+            <p class="text-[11px] text-slate-400 mt-4">${fi.stage === 'saving' ? 'Please keep this window open.' : 'Everything is read on this device.'}</p>
+          </div>`;
+        foot.innerHTML = fi.stage === 'saving' ? '' : btn('Cancel', 'closeFolderImport()', false);
+        fiProgress('');
+        return;
+      }
+
+      // Review
+      const files = fi.files;
+      const open = fiOpenQuestions();
+      const newCats = Object.keys(fi.newCats).filter(c => files.some(f => f.cat === c));
+      const options = c => {
+        const tags = getAvailableDocTags().map(t => t.id);
+        const extra = newCats.filter(n => fi.newCats[n] !== 'no' && !tags.includes(n));
+        return [...tags.map(t => `<option value="${fiEsc(t)}"${t === c ? ' selected' : ''}>${fiEsc(t)}</option>`),
+          ...extra.map(t => `<option value="${fiEsc(t)}"${t === c ? ' selected' : ''}>${fiEsc(t)} (new)</option>`)].join('');
+      };
+      const groups = {};
+      files.forEach((f, i) => { const c = fiFinalCat(f); (groups[c] = groups[c] || []).push(i); });
+      const order = Object.keys(groups).sort((a, b) => (a === 'Other') - (b === 'Other') || groups[b].length - groups[a].length);
+
+      let html = '';
+      if (!files.length) {
+        html += `<div class="py-8 text-center"><p class="font-bold text-slate-800 dark:text-slate-100">Nothing new to add</p><p class="text-xs text-slate-500 dark:text-slate-400 mt-1">There were no new PDFs or pictures in what you picked.</p></div>`;
+      } else {
+        html += `<p class="text-slate-700 dark:text-slate-200 mb-3"><b>${files.length}</b> ${files.length === 1 ? 'file is' : 'files are'} ready, sorted into <b>${order.length}</b> ${order.length === 1 ? 'category' : 'categories'}. Check them, then press <b>Add</b>.</p>`;
+      }
+
+      newCats.forEach(c => {
+        const n = files.filter(f => f.cat === c).length;
+        const ans = fi.newCats[c];
+        const cA = jsAttr(c);
+        html += `<div class="mb-3 rounded-2xl border-2 ${ans === null ? 'border-amber-300 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'} p-4">
+          <p class="font-bold text-slate-800 dark:text-slate-100">New category: “${fiEsc(c)}”?</p>
+          <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">${n} ${n === 1 ? 'file looks' : 'files look'} like ${fiEsc(c)}, but there's no “${fiEsc(c)}” category yet.</p>
+          ${ans === null ? `<div class="flex flex-wrap gap-2 mt-3">
+              ${btn(`Yes, make “${fiEsc(c)}”`, `fiAnswer(${cA}, 'yes')`, true)}
+              ${btn('No, put them in Other for now', `fiAnswer(${cA}, 'no')`, false)}
+            </div>`
+            : `<p class="text-xs mt-2 font-bold ${ans === 'yes' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}">${ans === 'yes' ? `✓ “${fiEsc(c)}” will be made.` : 'They will go in Other for now. The Vault will offer this category again later.'}
+               <button type="button" onclick="fiAnswer(${cA}, null)" class="ml-2 underline font-semibold text-blue-600 dark:text-blue-400 cursor-pointer">Change</button></p>`}
+        </div>`;
+      });
+
+      order.forEach(c => {
+        html += `<div class="mt-4"><p class="text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">${fiEsc(c)} <span class="font-semibold">(${groups[c].length})</span></p><div class="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">`;
+        groups[c].forEach(i => {
+          const f = files[i];
+          html += `<div class="flex items-center gap-2 px-3 py-2">
+            <div class="min-w-0 flex-1"><p class="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate" title="${fiEsc(f.path)}">${fiEsc(f.file.name)}</p>
+              <p class="text-[10px] text-slate-400 truncate">${fiEsc(f.dir || 'top folder')}${f.why ? ' · ' + fiEsc(f.why) : ''}${f.extra ? ' · also ' + fiEsc(f.extra) : ''}</p></div>
+            <select onchange="fiSetCat(${i}, this.value)" aria-label="Category for ${fiEsc(f.file.name)}" class="text-xs px-2 py-1 rounded-lg max-w-[11rem]">${options(fiFinalCat(f))}</select>
+          </div>`;
+        });
+        html += `</div></div>`;
+      });
+
+      if (fi.skipped.length) {
+        html += `<details class="mt-4 text-xs"><summary class="cursor-pointer font-bold text-slate-600 dark:text-slate-300">${fi.skipped.length} ${fi.skipped.length === 1 ? 'file' : 'files'} left out</summary>
+          <ul class="mt-2 space-y-1">${fi.skipped.map(s => `<li class="text-slate-500 dark:text-slate-400"><span class="font-semibold text-slate-700 dark:text-slate-200">${fiEsc(s.name)}</span> — ${fiEsc(s.why)}</li>`).join('')}</ul></details>`;
+      }
+      if (files.length && files.some(f => f.dir)) {
+        html += `<label class="mt-4 flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer"><input type="checkbox" class="mt-0.5" ${fi.keepFolders ? 'checked' : ''} onchange="fi.keepFolders = this.checked">
+          <span>Also keep my folder names as folders in the Vault</span></label>`;
+      }
+      body.innerHTML = html;
+      foot.innerHTML = (open.length ? `<p class="text-xs font-semibold text-amber-700 dark:text-amber-400 mr-auto">Answer the new category ${open.length === 1 ? 'question' : 'questions'} above first.</p>` : '')
+        + btn(files.length ? 'Cancel' : 'Close', 'closeFolderImport()', false)
+        + (files.length ? btn(`Add ${files.length} ${files.length === 1 ? 'Document' : 'Documents'}`, 'fiSave()', true, open.length ? 'disabled' : '') : '');
+    }
+
+    function fiAnswer(cat, ans) {
+      if (!fi) return;
+      fi.newCats[cat] = ans;
+      fiRender();
+    }
+    function fiSetCat(i, value) {
+      if (!fi || !fi.files[i]) return;
+      const f = fi.files[i];
+      f.cat = value; f.why = 'your choice';
+      if (f.extra === value) f.extra = null;
+      if (!fiHasCategory(value) && !(value in fi.newCats)) fi.newCats[value] = null;
+      fiRender();
+    }
+
+    function fiReadDataUrl(file) {
+      return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
+    }
+
+    async function fiSave() {
+      if (!fi || fi.stage !== 'review' || fiOpenQuestions().length) return;
+      const files = fi.files;
+      // 1. Categories she said yes to
+      const made = Object.keys(fi.newCats).filter(c => fi.newCats[c] === 'yes' && files.some(f => f.cat === c) && !fiHasCategory(c));
+      if (made.length) {
+        const before = JSON.stringify(state);
+        if (!Array.isArray(state.customSpecialties)) state.customSpecialties = [];
+        made.forEach(name => { if (!fiNameTaken(name)) state.customSpecialties.push({ name, icon: 'stethoscope', createdAt: new Date().toISOString() }); });
+        if (!saveOrUndo(before)) { showToast('⚠️ The new categories could not be saved. Nothing was added.'); return; }
+        renderSpecialtyUI();
+      }
+      // 2. Her folders, if she wants them kept
+      const folderIds = {};
+      if (fi.keepFolders) {
+        const before = JSON.stringify(state);
+        if (!Array.isArray(state.docFolders)) state.docFolders = [];
+        const dirs = [...new Set(files.filter(f => f.dir).map(f => f.dir))];
+        dirs.forEach((dir, n) => {
+          const inDir = files.filter(f => f.dir === dir);
+          const tags = [...new Set(inDir.map(f => fiFinalCat(f)))];
+          const id = `folder-${Date.now()}-${n}-${Math.random().toString(36).substring(2, 7)}`;
+          state.docFolders.push({ id, name: dir.split('/').pop(), doctor: '', appointmentId: '', notes: dir.includes('/') ? `From ${dir}` : '', tags, createdAt: new Date().toISOString() });
+          folderIds[dir] = id;
+        });
+        if (dirs.length && !saveOrUndo(before)) { showToast('⚠️ The folders could not be saved. Nothing was added.'); return; }
+      }
+      // 3. The documents, one at a time
+      fi.stage = 'saving'; fi.done = 0; fi.toSave = files.length;
+      fiRender();
+      let saved = 0, failed = 0;
+      const stamp = Date.now();
+      for (const [i, f] of files.entries()) {
+        fiProgress(f.file.name);
+        try {
+          const dataUrl = await fiReadDataUrl(f.file);
+          const cat = fiFinalCat(f);
+          const tags = [cat];
+          if (f.extra && f.extra !== cat && fiHasCategory(f.extra)) tags.push(f.extra);
+          const doc = {
+            id: `doc-${stamp}-${i}`,
+            title: f.file.name.replace(/\.[^/.]+$/, ''),
+            category: cat,
+            tags,
+            folderId: folderIds[f.dir] || null,
+            date: localISODate(new Date(f.file.lastModified || Date.now())),
+            notes: f.dir ? `From folder: ${f.dir}` : '',
+            fileName: f.file.name,
+            type: f.file.type || (/\.pdf$/i.test(f.file.name) ? 'application/pdf' : ''),
+            size: f.file.size,
+            dataUrl,
+            uploadedAt: new Date().toISOString()
+          };
+          if ((doc.type || '').startsWith('image/')) { const t = await makeThumbnail(dataUrl); if (t) doc.thumbUrl = t; }
+          if (fi.newCats[f.cat] === 'no') doc.waitingCategory = f.cat;
+          if (tags.includes('Medical Bills')) {
+            doc.billStatus = f.billPaid ? 'paid' : 'unpaid';
+            applyBillFields(doc, { amount: f.billAmount ?? null, due: '' });
+          }
+          if (await saveDocToDB(doc)) saved++; else failed++;
+        } catch (e) { console.error('Folder upload:', e); failed++; }
+        fi.done++;
+      }
+      const bills = files.filter(f => fiFinalCat(f) === 'Medical Bills' || f.extra === 'Medical Bills').length;
+      fi.stage = 'done';
+      closeFolderImport();
+      renderActiveTab();
+      updateBadgesAndCounts();
+      showToast(failed
+        ? `⚠️ Added ${saved} of ${files.length}. ${failed} could not be saved (storage may be full).`
+        : `✓ Added ${saved} ${saved === 1 ? 'document' : 'documents'}${made.length ? `, and made ${made.length === 1 ? 'a new category' : made.length + ' new categories'}` : ''}${bills ? `. ${bills} ${bills === 1 ? 'bill is' : 'bills are'} in Medical Bills` : ''}`);
+    }
+
+    // In the Vault: documents put in Other because she said no to a new category, offered again
+    function fiRenderWaiting(allDocs) {
+      const bar = document.getElementById('vaultWaitingBar');
+      if (!bar) return;
+      const groups = {};
+      (allDocs || []).forEach(d => {
+        if (!d.waitingCategory) return;
+        if (getDocumentTags(d)[0] !== 'Other') return; // moved somewhere else since
+        (groups[d.waitingCategory] = groups[d.waitingCategory] || []).push(d);
+      });
+      const names = Object.keys(groups);
+      if (!names.length || !(currentVaultFilter === 'all' || currentVaultFilter === 'Other')) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+      bar.classList.remove('hidden');
+      bar.innerHTML = names.map(c => {
+        const n = groups[c].length, cA = jsAttr(c);
+        const exists = fiHasCategory(c);
+        return `<div class="flex flex-wrap items-center gap-3 p-3.5 rounded-2xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/20 text-xs">
+          <p class="flex-1 min-w-[12rem] text-slate-700 dark:text-slate-200"><b>${n} ${n === 1 ? 'document' : 'documents'}</b> in Other ${n === 1 ? 'looks' : 'look'} like <b>${fiEsc(c)}</b>.${exists ? '' : ` Make a category called “${fiEsc(c)}” for ${n === 1 ? 'it' : 'them'}?`}</p>
+          <button type="button" onclick="fiWaitingYes(${cA})" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition cursor-pointer">${exists ? `Move to ${fiEsc(c)}` : `Yes, make “${fiEsc(c)}”`}</button>
+          <button type="button" onclick="fiWaitingNo(${cA})" class="px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg font-bold transition cursor-pointer">Keep in Other</button>
+        </div>`;
+      }).join('');
+    }
+
+    async function fiWaitingDocs(cat) {
+      return (await getAllDocsFromDB()).filter(d => d.waitingCategory === cat && getDocumentTags(d)[0] === 'Other');
+    }
+    async function fiWaitingYes(cat) {
+      if (!fiHasCategory(cat)) {
+        if (fiNameTaken(cat) || isSpecialtyDeleted(cat)) { showToast(`"${cat}" can't be used as a category name`, 'error'); return; }
+        const before = JSON.stringify(state);
+        if (!Array.isArray(state.customSpecialties)) state.customSpecialties = [];
+        state.customSpecialties.push({ name: cat, icon: 'stethoscope', createdAt: new Date().toISOString() });
+        if (!saveOrUndo(before)) return;
+        renderSpecialtyUI();
+      }
+      const name = fiCategoryName(cat);
+      const docs = await fiWaitingDocs(cat);
+      let n = 0;
+      for (const d of docs) {
+        const rest = getDocumentTags(d).filter(t => t !== 'Other' && t !== name);
+        const upd = { ...d, category: name, tags: [name, ...rest] };
+        delete upd.waitingCategory;
+        if (await saveDocToDB(upd)) n++;
+      }
+      showToast(`✓ Moved ${n} ${n === 1 ? 'document' : 'documents'} to ${name}`);
+      renderActiveTab();
+      updateBadgesAndCounts();
+    }
+    async function fiWaitingNo(cat) {
+      for (const d of await fiWaitingDocs(cat)) { const upd = { ...d }; delete upd.waitingCategory; await saveDocToDB(upd); }
+      renderActiveTab();
+    }
 
     /* =====================================================================
        APP SETTINGS & USER PREFERENCES
