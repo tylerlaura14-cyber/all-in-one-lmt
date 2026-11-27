@@ -5361,6 +5361,11 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.18)}
 .dlg .warn{display:flex;gap:12px;align-items:flex-start}
 .dlg .warn .ic{font-size:26px;line-height:1}
 @media (max-width:767px){.tbar .ttl{padding-right:0}.findbar{right:8px;left:8px;width:auto;top:120px}}
+/* short window (big zoom or small screen): the ribbon folds away; a ribbon tab shows it over the sheet */
+.xl.short .ribbon{display:none}
+.xl.short.ropen .ribbon{display:block;position:absolute;left:0;right:0;top:60px;z-index:40;box-shadow:0 4px 10px rgba(0,0,0,.25)}
+.xl.tiny .tbar,.xl.tiny .sbar{display:none}
+.xl.tiny.ropen .ribbon{top:28px}
 @media print{.xl{display:none}}
 
 /* ===== theme: follows All in One's color theme and light / dark mode (the --aio-* colors come from the app) ===== */
@@ -8340,6 +8345,7 @@ function setRibbonTab(name, btn) {
     ], r.left, r.bottom + 1);
     return;
   }
+  if (ROOT.classList.contains('short')) { const was = btn && btn.classList.contains('on') && ROOT.classList.contains('ropen'); ROOT.classList.toggle('ropen', !was); }
   ROOT.querySelectorAll('.rtabs button').forEach(b => b.classList.toggle('on', b.dataset.rt === name));
   ROOT.querySelectorAll('.rp').forEach(p => p.classList.toggle('on', p.dataset.rp === name));
 }
@@ -9104,12 +9110,29 @@ ROOT.querySelectorAll('svg[data-ico]').forEach(svg => { const tmp = document.cre
 
 /* ===================== sizing and start ===================== */
 const HOST = SHADOW.host;
+// The app's zoom setting puts CSS zoom on the hub page, so each CSS pixel here can be 1.25x, 1.5x… on screen.
+// Size the sheet in CSS pixels so its bottom (scroll bar, sheet tabs, status bar) always lands on screen.
+function pageZoom() {
+  const de = HOST.ownerDocument.documentElement;
+  const z = de.currentCSSZoom || parseFloat(de.style.zoom) || 1;
+  return z > 0 ? z : 1;
+}
 function fit() {
-  const top = HOST.getBoundingClientRect().top + scrollY;
-  const h = Math.max(320, innerHeight - Math.max(0, top));
-  ROOT.style.height = h + 'px';
+  if (!HOST.classList.contains('on')) return;
+  const z = pageZoom(), hr = HOST.getBoundingClientRect();
+  // Browsers disagree on whether boxes under zoom are reported zoomed; work it out from the host itself.
+  const k = HOST.offsetHeight > 0 && hr.height > 0 ? hr.height / HOST.offsetHeight : z;
+  const top = Math.max(0, (hr.top + scrollY) / k);
+  const h = Math.max(100,Math.floor(innerHeight / z - top));
+  // Short window: fold the ribbon away like Excel does; a ribbon tab opens it on top of the sheet.
+  ROOT.classList.toggle('short', h < 380);
+  ROOT.classList.toggle('tiny', h < 230);
+  if (h >= 380) ROOT.classList.remove('ropen');
+  if (ROOT.style.height !== h + 'px') ROOT.style.height = h + 'px';
   if (edit) placeEditor();
 }
+new MutationObserver(() => { fit(); if (wb && HOST.classList.contains('on')) renderSel(); }).observe(HOST.ownerDocument.documentElement, { attributes: true, attributeFilter: ['style'] });
+ROOT.addEventListener('mousedown', ev => { if (ROOT.classList.contains('ropen') && !ev.target.closest('.ribbon, .rtabs, .menu, dialog')) ROOT.classList.remove('ropen'); }, true);
 addEventListener('resize', () => { fit(); if (wb && HOST.classList.contains('on')) renderSel(); });
 new MutationObserver(() => { if (HOST.classList.contains('on')) { fit(); if (wb) renderSel(); } }).observe(HOST, { attributes: true, attributeFilter: ['class'] });
 fit();
