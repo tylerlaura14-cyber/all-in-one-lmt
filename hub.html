@@ -5319,7 +5319,11 @@ textarea.kb{position:absolute;left:-10000px;top:0;width:10px;height:10px;opacity
 .menu .pal button{width:17px!important;height:17px;padding:0!important;border:1px solid #c6c6c6!important;display:block!important}
 .menu .pal button:hover{outline:2px solid #f29436;border-color:#fff!important}
 .menu .note{padding:6px 10px;color:#666;font-size:11.5px;white-space:normal;max-width:260px}
-.ntip{position:fixed;z-index:55;background:#ffffe1;border:1px solid #777;padding:6px 8px;max-width:280px;font:12px "Segoe UI",system-ui,sans-serif;white-space:pre-wrap;box-shadow:2px 2px 5px rgba(0,0,0,.25);pointer-events:none;color:#000}
+.ntip{position:fixed;z-index:55;background:#ffffe1;border:1px solid #777;padding:8px 10px;width:max-content;max-width:340px;font:13px "Segoe UI",system-ui,sans-serif;box-shadow:2px 3px 8px rgba(0,0,0,.25);color:#000;display:flex;flex-direction:column;gap:8px}
+.ntip .nt{white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:240px;line-height:1.4;user-select:text;-webkit-user-select:text}
+.ntip .na{display:flex;justify-content:flex-end}
+.ntip .na .btn{min-width:64px}
+table.g td.cl{text-overflow:ellipsis}
 .ac{position:fixed;z-index:58;background:#fff;border:1px solid #b9b9b9;box-shadow:0 3px 10px rgba(0,0,0,.18);font:12px "Segoe UI",system-ui,sans-serif;min-width:240px;max-width:360px}
 .ac .it{padding:3px 8px;display:flex;gap:8px;align-items:center;cursor:default}
 .ac .it::before{content:"fx";font:italic 600 11px "Times New Roman",serif;color:#217346;width:14px}
@@ -5563,7 +5567,7 @@ const XL_HTML = `
   <div class="menu" id="menu" hidden></div>
   <div class="ac" id="ac" hidden></div>
   <div class="stip" id="stip" hidden></div>
-  <div class="ntip" id="ntip" hidden></div>
+  <div class="ntip" id="ntip" hidden><div class="nt" id="ntText"></div><div class="na"><button type="button" class="btn" id="ntEdit">Edit</button></div></div>
   <div class="findbar" id="findbar" hidden>
     <div class="fh"><b style="font-weight:600">Find</b><button type="button" class="x" id="findX" title="Close">✕</button></div>
     <div class="fb"><span>Find what:</span><input type="text" id="findQ" spellcheck="false" autocomplete="off">
@@ -6461,7 +6465,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 function cleanStyle(s) {
   if (!s || typeof s !== 'object') return undefined;
   const o = {};
-  for (const k of ['b', 'i', 'u', 'wrap']) if (s[k] === true) o[k] = true;
+  for (const k of ['b', 'i', 'u', 'wrap', 'clip']) if (s[k] === true) o[k] = true;
   if (typeof s.ff === 'string' && /^[\w \-]{1,40}$/.test(s.ff)) o.ff = s.ff;
   if (typeof s.fs === 'number' && s.fs >= 6 && s.fs <= 96) o.fs = Math.round(s.fs * 2) / 2;
   if (typeof s.fc === 'string' && HEX.test(s.fc)) o.fc = s.fc;
@@ -6508,6 +6512,7 @@ function cleanBook(d) {
   }
   if (!out.sheets.length) return null;
   out.active = clamp(parseInt(d.active, 10) || 0, 0, out.sheets.length - 1);
+  if (d.nc === true) out.nc = true;
   return out;
 }
 
@@ -6643,8 +6648,13 @@ function renderGrid() {
               if (textW(t, st) > w) t = '#'.repeat(Math.max(1, Math.floor(w / textW('#', st))));
             } else t = '#'.repeat(Math.max(1, Math.floor(w / textW('#', st))));
           }
+          if (st && st.clip && !st.wrap && !d.n) { // collapsed note: first line only, cut off with …
+            const lines = String(t).split('\n');
+            t = lines[0] + (lines.length > 1 ? ' …' : '');
+            cls += ' cl';
+          }
           inner = esc(t);
-          if (al === 'left' && !d.n && !(st && st.wrap) && !mg && t && textW(t, st) > w) {
+          if (al === 'left' && !d.n && !(st && (st.wrap || st.clip)) && !mg && t && textW(t, st) > w) {
             let room = colW(S, c) - 7, cc = c + 1;
             while (cc < nC && cc < c + 30 && cellIsEmpty(S, r, cc) && !(hasMg && covered.has(r + ',' + cc))) { room += colW(S, cc); cc++; }
             if (room > colW(S, c) - 7) { cls += ' ov'; inner = `<span class="sp" style="max-width:${room}px">${inner}</span>`; }
@@ -7415,20 +7425,59 @@ gw.addEventListener('scroll', () => {
 }, { passive: true });
 
 /* ---------- notes (red triangle) ---------- */
-let tipFor = null;
+// Hovering a note (red triangle) or a collapsed note cell shows the whole note with an Edit button
+let tipFor = null, tipTarget = null, tipTimer = null;
 document.addEventListener('mouseover', ev => {
-  const t = ev.target, td = t.closest && t.closest('td.hn');
-  if (!td) { if (tipFor && !(t.closest && t.closest('td.hn'))) hideNoteTip(); return; }
-  const cell = cellFromEl(td); if (!cell) return;
-  const c = sheet().cells[key(cell.r, cell.c)]; if (!c || !c.n) return;
+  const t = ev.target;
+  if (t.closest && t.closest('#ntip')) { clearTimeout(tipTimer); return; }
+  const td = t.closest && t.closest('td.hn, td.cl');
+  if (!td || drag || edit || ROOT.querySelector('dialog[open]')) { if (tipFor) { clearTimeout(tipTimer); tipTimer = setTimeout(hideNoteTip, 300); } return; }
+  clearTimeout(tipTimer);
   if (tipFor === td) return;
-  tipFor = td;
-  const tip = $('ntip'); tip.textContent = c.n; tip.hidden = false;
+  const cell = cellFromEl(td); if (!cell) return;
+  const S = sheet(), c = S.cells[key(cell.r, cell.c)]; if (!c) return;
+  let text, kind;
+  if (td.classList.contains('hn') && c.n) { text = c.n; kind = 'note'; }
+  else if (td.classList.contains('cl') && typeof c.v === 'string' && c.v[0] !== '=') {
+    text = c.v[0] === "'" ? c.v.slice(1) : c.v; kind = 'text';
+    const st = effStyle(S, cell.r, cell.c, c);
+    if (!text.includes('\n') && textW(text, st) <= colW(S, cell.c) - 8) { hideNoteTip(); return; } // it all fits already
+  } else return;
+  tipFor = td; tipTarget = { ...cell, kind, sheetId: S.id };
+  const tip = $('ntip');
+  $('ntText').textContent = text;
+  $('ntEdit').textContent = kind === 'note' ? 'Edit Note' : 'Edit';
+  tip.hidden = false;
   const b = td.getBoundingClientRect();
-  tip.style.left = Math.min(b.right + 8, innerWidth - tip.offsetWidth - 6) + 'px';
-  tip.style.top = Math.min(b.top, innerHeight - tip.offsetHeight - 6) + 'px';
+  const right = b.right + 6 + tip.offsetWidth < innerWidth - 6;
+  tip.style.left = Math.max(6, right ? b.right + 6 : b.left - tip.offsetWidth - 6) + 'px';
+  tip.style.top = clamp(b.top, 6, innerHeight - tip.offsetHeight - 6) + 'px';
 });
-function hideNoteTip() { tipFor = null; $('ntip').hidden = true; }
+$('ntip').addEventListener('mouseleave', () => { clearTimeout(tipTimer); tipTimer = setTimeout(hideNoteTip, 300); });
+$('ntEdit').addEventListener('click', () => {
+  const t = tipTarget; hideNoteTip();
+  if (!t || sheet().id !== t.sheetId) return;
+  if (edit && !commitEdit()) return;
+  setSel(t.r, t.c);
+  if (t.kind === 'note') noteDlg(); else textDlg(t.r, t.c);
+});
+function hideNoteTip() { clearTimeout(tipTimer); tipFor = null; tipTarget = null; $('ntip').hidden = true; }
+// A roomy box for editing a long note that lives in a cell
+function textDlg(r, c) {
+  const why = blockedWhy(); if (why) { flashStatus(why); return; }
+  const S = sheet(), cell = S.cells[key(r, c)];
+  const cur = cell && typeof cell.v === 'string' ? (cell.v[0] === "'" ? cell.v.slice(1) : cell.v) : editText(cell, effStyle(S, r, c, cell));
+  const head = S.cells[key(0, c)];
+  const title = r > 0 && head && typeof head.v === 'string' && head.v[0] !== '=' ? head.v : `Cell ${A1(r, c)}`;
+  const row = S.cells[key(r, 0)];
+  const what = c > 0 && row && typeof row.v === 'string' && row.v[0] !== '=' ? ` · ${row.v}` : '';
+  dialog(`${title}${what}`.slice(0, 80), `<textarea rows="10" id="txtEd" maxlength="32000"></textarea>`, [
+    { label: 'Save', pri: true, run: d => {
+      const t = d.querySelector('#txtEd').value;
+      mutate(() => { const k = key(r, c), cl = S.cells[k] || (S.cells[k] = {}); if (t === '') { delete cl.v; if (!cl.s && !cl.n) delete S.cells[k]; } else cl.v = /^[='+]/.test(t) ? "'" + t : t; });
+    } },
+    { label: 'Cancel', cancel: true }], d => { const ta = d.querySelector('#txtEd'); ta.value = cur; ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); });
+}
 
 /* ===================== clipboard ===================== */
 function usedClamp(g) { const u = usedOf(wb.active); return { r1: g.r1, c1: g.c1, r2: isWholeCol(g) ? Math.max(g.r1, u.r) : g.r2, c2: isWholeRow(g) ? Math.max(g.c1, u.c) : g.c2 }; }
@@ -8091,7 +8140,7 @@ const CMDS = {
   growFont: () => growFont(1), shrinkFont: () => growFont(-1),
   border: a => applyBorder(a), fillLast: () => styleSel({ bg: lastFill }), colorLast: () => styleSel({ fc: lastColor }),
   alignL: () => styleSel({ ha: activeStyle().ha === 'left' ? null : 'left' }), alignC: () => styleSel({ ha: activeStyle().ha === 'center' ? null : 'center' }), alignR: () => styleSel({ ha: activeStyle().ha === 'right' ? null : 'right' }),
-  wrap: () => toggleStyle('wrap'), merge: toggleMerge,
+  wrap: () => styleSel({ wrap: !activeStyle().wrap, clip: null }), merge: toggleMerge,
   indentMore: () => styleSel({ ind: clamp((activeStyle().ind || 0) + 1, 0, 15), ha: activeStyle().ha === 'right' ? 'right' : 'left' }),
   indentLess: () => styleSel({ ind: Math.max(0, (activeStyle().ind || 0) - 1) || null }),
   accounting: () => styleSel({ nf: 'accounting', dp: 2, code: null }), percent: () => styleSel({ nf: 'percent', dp: 0, code: null }), comma: () => styleSel({ nf: 'comma', dp: 2, code: null }),
@@ -8713,6 +8762,7 @@ async function start() {
     mode = 'local'; loaded = true;
     let d = null; try { d = cleanBook(JSON.parse(localStorage.getItem(LOCAL_KEY))); } catch {}
     if (!d) { let old = null; try { old = JSON.parse(localStorage.getItem('hub_money_local')); } catch {} d = migrate(old); }
+    if (collapseNotes(d)) { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(d)); } catch {} }
     wb = d; sel = vs(); setSaveState(); renderAll(); return;
   }
   mode = 'db';
@@ -8731,14 +8781,35 @@ async function start() {
     if (!next) { if (first) { wb = newBook(); sel = vs(); renderAll(); } setSaveState(); return; }
     if (!first && JSON.stringify(next) === JSON.stringify(wb)) { setSaveState(); return; }
     if (!first && (edit || drag || ROOT.querySelector('dialog[open]'))) { pendingRemote = next; return; }
+    const fixed = collapseNotes(next);
     applyRemote(next); setSaveState();
+    if (fixed) { dirty = true; flush(); }
   }, () => { setSaveState('Your saved workbook is not available right now. Reload the page to try again.'); });
 }
 setInterval(() => { if (pendingRemote && !edit && !drag && !ROOT.querySelector('dialog[open]') && !dirty && !saving) { const n = pendingRemote; pendingRemote = null; applyRemote(n); } }, 1000);
 
+// One time only: notes columns carried over from the old Money app wrapped onto many lines. Collapse them to one line.
+function collapseNotes(book) {
+  if (!book || book.nc) return false;
+  for (const S of book.sheets) {
+    const cols = [];
+    for (let c = 0; c < 40; c++) { const h = S.cells[key(0, c)]; if (h && typeof h.v === 'string' && /^notes?$/i.test(h.v.trim())) cols.push(c); }
+    for (const c of cols) {
+      for (const [k, cell] of Object.entries(S.cells)) {
+        const [r, cc] = k.split(',').map(Number);
+        if (cc !== c || r === 0 || !cell.s || !cell.s.wrap) continue;
+        cell.s = cleanStyle({ ...cell.s, wrap: false, clip: true });
+      }
+      if (S.cw[c] > 300) S.cw[c] = 300;
+    }
+  }
+  book.nc = true;
+  return true;
+}
+
 /* ===================== bring over the old Money app's data ===================== */
 function migrate(old) {
-  const book = { app: 'money-sheet', v: 1, sheets: [], active: 0 };
+  const book = { app: 'money-sheet', v: 1, sheets: [], active: 0, nc: true };
   const d = old && typeof old === 'object' ? old : null;
   const arr = v => Array.isArray(v) ? v.filter(x => x && typeof x === 'object') : [];
   const s = (v, n = 500) => typeof v === 'string' ? v.slice(0, n) : '';
@@ -8753,7 +8824,7 @@ function migrate(old) {
       if (v === '' || v === null || v === undefined) return;
       const c = cols[j], cell = { v };
       if (c.nf) cell.s = { nf: c.nf, ...(c.dp != null ? { dp: c.dp } : {}) };
-      if (c.wrap) cell.s = { ...(cell.s || {}), wrap: true };
+      if (c.wrap) cell.s = { ...(cell.s || {}), clip: true };
       S.cells[key(i + 1, j)] = cell;
     }));
     if (total) {
@@ -8765,8 +8836,8 @@ function migrate(old) {
       let w = textW(c.h, { b: true }) + 16;
       for (const row of rows.slice(0, 300)) { const v = row[j]; if (v === '' || v == null || (typeof v === 'string' && v[0] === '=')) continue; const t = typeof v === 'number' ? display(v, { nf: c.nf, dp: c.dp }).t : String(v).split('\n')[0]; w = Math.max(w, textW(t, null) + 14); }
       if (c.nf) { const tot = rows.reduce((a, row) => a + (typeof row[j] === 'number' ? row[j] : 0), 0); w = Math.max(w, textW(display(tot * 1.5 + 1000, { nf: c.nf, dp: c.dp }).t, { b: true }) + 16); }
-      if (c.wrap) w = Math.max(w, 200);
-      S.cw[j] = Math.round(clamp(w, 50, c.wrap ? 360 : 260));
+      if (c.wrap) w = clamp(w, 220, 300);
+      S.cw[j] = Math.round(clamp(w, 50, c.wrap ? 300 : 260));
     });
     S.frz = { r: 1, c: 0 };
     book.sheets.push(S);
