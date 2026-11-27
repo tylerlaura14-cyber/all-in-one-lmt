@@ -5245,13 +5245,13 @@ select.rs:focus{border-color:var(--g)}
 .fxb .dots{color:#bbb;padding:0 4px;letter-spacing:-1px}
 .fxb button{width:24px;height:22px;font-size:14px;color:#666;display:grid;place-items:center}
 .fxb i{font-family:"Times New Roman",Georgia,serif;font-style:italic;font-size:15px;font-weight:600}
-.fx{flex:1;min-width:0;height:23px;border:0;outline:0;font:15px Calibri,Carlito,"Aptos","Segoe UI",Arial,sans-serif;padding:0 4px;background:#fff;user-select:text;-webkit-user-select:text}
+.xl .fx{flex:1;min-width:0;height:23px;border:0;outline:0;font:15px Calibri,Carlito,"Aptos","Segoe UI",Arial,sans-serif;padding:2px 4px 0;background:#fff;resize:none;overflow:hidden;white-space:pre;line-height:19px;user-select:text;-webkit-user-select:text}
 
 /* grid */
 .gw{flex:1;overflow:auto;position:relative;background:#fff;outline:none;overscroll-behavior:contain}
 .zm{position:relative;width:max-content;min-width:100%}
 table.g{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;font:14.667px Calibri,Carlito,"Aptos","Segoe UI",Arial,sans-serif;color:#000;cursor:cell}
-table.g td{border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);padding:0 3px;white-space:nowrap;overflow:hidden;vertical-align:bottom;line-height:18px;text-overflow:clip}
+table.g td{border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);padding:0 2px;white-space:nowrap;overflow:hidden;vertical-align:bottom;line-height:18px;text-overflow:clip}
 table.g.nogrid td{border-color:#fff}
 table.g td.ov{overflow:visible}
 table.g td .sp{display:inline-block;overflow:hidden;vertical-align:bottom;white-space:nowrap}
@@ -5537,7 +5537,7 @@ const XL_HTML = `
       <button type="button" id="fxOk" title="Enter">✓</button>
       <button type="button" data-cmd="fxDialog" title="Insert Function"><i>fx</i></button>
     </div>
-    <input class="fx" id="fx" spellcheck="false" autocomplete="off" aria-label="Formula Bar">
+    <textarea class="fx" id="fx" rows="1" spellcheck="false" autocomplete="off" aria-label="Formula Bar"></textarea>
   </div>
 
   <div class="gw" id="gw" tabindex="-1">
@@ -6353,6 +6353,8 @@ function formatCode(v, code) {
   const n = ROUNDX(Math.abs(v), dp);
   let body = comma ? group(n, dp) : n.toFixed(dp);
   if (/^#/.test(m[0]) && !comma && n < 1 && dp) body = body.replace(/^0/, '');
+  const minInt = (m[0].split('.')[0].match(/0/g) || []).length; // "000" means at least 3 digits
+  if (!comma && minInt > 1) { const [ip, fp] = body.split('.'); body = ip.padStart(minInt, '0') + (fp !== undefined ? '.' + fp : ''); }
   const pre = f.slice(0, m.index).replace(/"([^"]*)"/g, '$1').replace(/\\(.)/g, '$1').replace(/\[[^\]]*\]/g, '').replace(/[_*]./g, '');
   const post = f.slice(m.index + m[0].length).replace(/"([^"]*)"/g, '$1').replace(/\\(.)/g, '$1').replace(/[_*]./g, '');
   return (v < 0 && parts[1] === undefined ? '-' : '') + pre + body + post;
@@ -6428,9 +6430,9 @@ function hintOf(n, ctx, depth = 0) {
   return null;
 }
 function effStyle(S, r, c, cell) {
-  const a = S.cs && S.cs[c], b = S.rs && S.rs[r], s = cell && cell.s;
-  if (!a && !b) return s || null;
-  return Object.assign({}, a, b, s);
+  // Like Excel: a cell with its own format uses only that; otherwise the row format, otherwise the column format
+  if (cell && cell.s) return cell.s;
+  return (S.rs && S.rs[r]) || (S.cs && S.cs[c]) || null;
 }
 // What a typed entry becomes: { v, nf, dp } or null for empty. Throws FormulaError for a broken formula.
 function parseInput(text) {
@@ -6462,7 +6464,7 @@ const FONTS = ['Calibri', 'Aptos', 'Arial', 'Arial Black', 'Book Antiqua', 'Cali
 const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
 const NFS = ['general', 'number', 'fixed', 'currency', 'accounting', 'comma', 'percent', 'date', 'longdate', 'time', 'datetime', 'text', 'custom'];
 const DEF_W = 64, DEF_H = 20;
-const newSheet = name => ({ id: uid(), name, cells: {}, cw: {}, rh: {}, cs: {}, rs: {}, mg: [], frz: { r: 0, c: 0 }, grid: true, zoom: 100 });
+const newSheet = name => ({ id: uid(), name, cells: {}, cw: {}, rh: {}, cwH: {}, rhH: {}, cs: {}, rs: {}, mg: [], frz: { r: 0, c: 0 }, grid: true, zoom: 100 });
 const newBook = () => ({ app: 'money-sheet', v: 1, sheets: [newSheet('Sheet1')], active: 0 });
 const HEX = /^#[0-9a-f]{6}$/i;
 function cleanStyle(s) {
@@ -6506,7 +6508,7 @@ function cleanBook(d) {
       if (Object.keys(o).length) S.cells[kk] = o;
     }
     const nums = (src, lo, hi) => { const o = {}; if (src && typeof src === 'object') for (const [i, v] of Object.entries(src)) if (/^\d{1,7}$/.test(i) && typeof v === 'number' && v >= lo && v <= hi) o[i] = Math.round(v); return o; };
-    S.cw = nums(s.cw, 0, 2000); S.rh = nums(s.rh, 0, 1000);
+    S.cw = nums(s.cw, 0, 2000); S.rh = nums(s.rh, 0, 1000); S.cwH = nums(s.cwH, 1, 2000); S.rhH = nums(s.rhH, 1, 1000);
     for (const f of ['cs', 'rs']) if (s[f] && typeof s[f] === 'object') for (const [i, v] of Object.entries(s[f])) { const st = cleanStyle(v); if (/^\d{1,7}$/.test(i) && st) S[f][i] = st; }
     if (Array.isArray(s.mg)) S.mg = s.mg.filter(m => Array.isArray(m) && m.length === 4 && m.every(x => Number.isInteger(x) && x >= 0) && m[2] >= m[0] && m[3] >= m[1] && (m[2] > m[0] || m[3] > m[1])).slice(0, 2000).map(m => m.slice());
     if (s.frz && typeof s.frz === 'object') S.frz = { r: clamp(parseInt(s.frz.r, 10) || 0, 0, 100), c: clamp(parseInt(s.frz.c, 10) || 0, 0, 50) };
@@ -6571,7 +6573,10 @@ let rowIndex = new Map();
 function buildRowIndex(S) { rowIndex = new Map(); for (const k in S.cells) { const i = k.indexOf(','), r = +k.slice(0, i); let a = rowIndex.get(r); if (!a) rowIndex.set(r, a = []); a.push(+k.slice(i + 1)); } }
 function ensureSize(S, V) {
   const u = usedOf(wb.active);
-  const needR = Math.max(V.nR, u.r + 60, 100, Math.max(sel.ar, sel.fr === MAXR ? 0 : sel.fr) + 30, (S.frz.r || 0) + 30);
+  // Rows are drawn only as far as needed (more are added while scrolling), so big sheets stay quick
+  const z = (S.zoom || 100) / 100, rowsDown = Math.ceil((gw.scrollTop + gw.clientHeight) / (DEF_H * z)) + 300;
+  const needR = Math.max(Math.min(u.r + 60, 400), 100, sel.ar + 40, (S.frz.r || 0) + 30, rowsDown, V.grow || 0);
+  V.grow = 0;
   const needC = Math.max(V.nC, u.c + 6, 26, Math.max(sel.ac, sel.fc === MAXC ? 0 : sel.fc) + 4);
   V.nR = Math.min(needR, MAXR + 1); V.nC = Math.min(needC, MAXC + 1);
 }
@@ -6587,7 +6592,7 @@ function rowHeight(S, r) {
     if (st.fs && st.fs > 11) h = Math.max(h, lh);
     if (st.wrap && cell && cell.v !== undefined && !mergeAt(S, r, c)) {
       const t = display(showF ? cell.v : cellVal(wb.active, r, c), st).t || '';
-      const w = Math.max(10, colW(S, c) - 7);
+      const w = Math.max(10, colW(S, c) - 5);
       let lines = 0; for (const para of String(t).split('\n')) lines += Math.max(1, Math.ceil(textW(para, st) / w));
       h = Math.max(h, lines * Math.ceil(((st.fs || 11) * PT) * 1.22) + 3);
     }
@@ -6649,10 +6654,12 @@ function renderGrid() {
         if (d.h) inner = d.h;
         else {
           let t = d.t;
-          const w = mg ? 99999 : colW(S, c) - 7 - ((st && st.ind) || 0) * 9;
+          const w = mg ? 99999 : colW(S, c) - 5 - ((st && st.ind) || 0) * 9;
           if (d.n && !(st && st.wrap) && textW(t, st) > w) {
-            if (d.g) { // general numbers lose decimals before turning into ####
-              let p = 10; while (p > 1 && textW(t, st) > w) { p--; t = String(parseFloat(val.toPrecision(p))); }
+            if (d.g) { // general numbers lose decimals (or switch to 1.2E+13 style) before turning into ####
+              const expo = k => val.toExponential(k).replace(/\.?0+e/, 'e').replace('e', 'E').replace(/E(\d)/, 'E+$1');
+              if (Number.isInteger(val) || Math.abs(val) >= 1e11 || Math.abs(val) < 1e-9) { for (let k = 5; k >= 0 && textW(t, st) > w; k--) t = expo(k); }
+              else { let p = 10; while (p > 1 && textW(t, st) > w) { p--; t = String(parseFloat(val.toPrecision(p))); } }
               if (textW(t, st) > w) t = '#'.repeat(Math.max(1, Math.floor(w / textW('#', st))));
             } else t = '#'.repeat(Math.max(1, Math.floor(w / textW('#', st))));
           }
@@ -6663,9 +6670,9 @@ function renderGrid() {
           }
           inner = esc(t);
           if (al === 'left' && !d.n && !(st && (st.wrap || st.clip)) && !mg && t && textW(t, st) > w) {
-            let room = colW(S, c) - 7, cc = c + 1;
+            let room = colW(S, c) - 5, cc = c + 1;
             while (cc < nC && cc < c + 30 && cellIsEmpty(S, r, cc) && !(hasMg && covered.has(r + ',' + cc))) { room += colW(S, cc); cc++; }
-            if (room > colW(S, c) - 7) { cls += ' ov'; inner = `<span class="sp" style="max-width:${room}px">${inner}</span>`; }
+            if (room > colW(S, c) - 5) { cls += ' ov'; inner = `<span class="sp" style="max-width:${room}px">${inner}</span>`; }
           }
         }
       } else if (st && st.ha && st.ha !== 'left') style += `text-align:${st.ha};`;
@@ -6829,7 +6836,7 @@ function renderAll() {
 /* ===================== moving around ===================== */
 function scrollToCell(r, c) {
   const V = vs();
-  if (r >= V.nR - 5 || c >= V.nC - 2) { V.nR = Math.max(V.nR, r + 60); V.nC = Math.max(V.nC, c + 6); renderAll(); }
+  if (r >= V.nR - 5 || c >= V.nC - 2) { V.grow = Math.max(V.grow || 0, r + 60); V.nC = Math.max(V.nC, c + 6); renderAll(); }
   const td = cellEl(r, c); if (!td) return;
   const S = sheet(), z = (S.zoom || 100) / 100;
   const gr = gw.getBoundingClientRect(), tr = td.getBoundingClientRect();
@@ -6925,7 +6932,7 @@ function setParsed(S, r, c, p) {
   if (typeof v === 'number' && !p.nf && st && st.nf === 'percent') v = round15(v / 100);
   if (st && st.nf === 'text' && typeof v !== 'string') v = String(p.raw != null ? p.raw : v);
   cell.v = v;
-  if (p.nf && (!st || !st.nf || st.nf === 'general')) { cell.s = Object.assign({}, cell.s, { nf: p.nf }); if (p.dp != null) cell.s.dp = p.dp; else delete cell.s.dp; }
+  if (p.nf && (!st || !st.nf || st.nf === 'general')) { cell.s = Object.assign({}, cell.s || effStyle(S, r, c, null), { nf: p.nf }); if (p.dp != null) cell.s.dp = p.dp; else delete cell.s.dp; }
 }
 function forCells(g, fn, limit = 400000) {
   const S = sheet();
@@ -6948,10 +6955,20 @@ function styleSel(patch, g = selR()) {
     }
     forCells(g, (r, c) => {
       const k = key(r, c); const cell = S.cells[k] || {};
-      const s = ap(cell.s);
+      const s = ap(cell.s || effStyle(S, r, c, null));
       if (s) cell.s = s; else delete cell.s;
       if (cell.v === undefined && !cell.s && !cell.n) delete S.cells[k]; else S.cells[k] = cell;
     });
+    // a new number format or bigger font that no longer fits widens the column (like Excel) instead of showing ####
+    if (['nf', 'dp', 'fs', 'ff', 'b'].some(k => k in patch)) {
+      let n = 0;
+      for (const k of Object.keys(S.cells)) {
+        const [r, c] = k.split(',').map(Number);
+        if (r < g.r1 || r > g.r2 || c < g.c1 || c > g.c2 || S.cw[c] === 0) continue;
+        if (++n > 3000) break;
+        autoWiden(S, r, c);
+      }
+    }
   });
 }
 const activeStyle = () => { const S = sheet(); return effStyle(S, sel.ar, sel.ac, S.cells[key(sel.ar, sel.ac)]) || {}; };
@@ -7180,7 +7197,7 @@ function editKey(ev) {
   if (acOpen && (k === 'ArrowDown' || k === 'ArrowUp')) { ev.preventDefault(); acIdx = (acIdx + (k === 'ArrowDown' ? 1 : -1) + acItems.length) % acItems.length; updateAc(); return; }
   if (acOpen && k === 'Tab') { ev.preventDefault(); acceptAc(); return; }
   if (k === 'Enter') {
-    if (ev.altKey) { ev.preventDefault(); const el = edit.el; if (el === fx) return; const s = el.selectionStart, e = el.selectionEnd; el.value = el.value.slice(0, s) + '\n' + el.value.slice(e); el.setSelectionRange(s + 1, s + 1); syncEdit(el); return; }
+    if (ev.altKey) { ev.preventDefault(); const el = edit.el; const s = el.selectionStart, e = el.selectionEnd; el.value = el.value.slice(0, s) + '\n' + el.value.slice(e); el.setSelectionRange(s + 1, s + 1); syncEdit(el); return; }
     ev.preventDefault(); commitEdit(ctrl ? 0 : sh ? -1 : 1, 0, ctrl); return;
   }
   if (k === 'Tab') { ev.preventDefault(); commitEdit(0, sh ? -1 : 1); return; }
@@ -7265,7 +7282,7 @@ function goName(txt) {
   if (!m) { msgBox('Type a cell address like B5, or a range like A1:C10.'); updateBar(); return; }
   const r1 = +m[2] - 1, c1 = colNum(m[1]);
   if (m[3]) setSel(r1, c1, +m[4] - 1, colNum(m[3])); else setSel(r1, c1);
-  focusGrid();
+  focusGrid(); updateBar();
 }
 
 /* ===================== mouse ===================== */
@@ -7435,7 +7452,7 @@ gw.addEventListener('scroll', () => {
   const V = vs();
   V.sy = gw.scrollTop; V.sx = gw.scrollLeft;
   hideNoteTip();
-  if (gw.scrollTop + gw.clientHeight > gw.scrollHeight - 300 && V.nR < MAXR) { V.nR += 100; const sy = gw.scrollTop, sx = gw.scrollLeft; renderGrid(); gw.scrollTop = sy; gw.scrollLeft = sx; renderSel(); if (edit) placeEditor(); }
+  if (gw.scrollTop + gw.clientHeight > gw.scrollHeight - 600 && V.nR < MAXR) { V.grow = V.nR + 300; const sy = gw.scrollTop, sx = gw.scrollLeft; renderGrid(); gw.scrollTop = sy; gw.scrollLeft = sx; renderSel(); if (edit) placeEditor(); }
   else if (gw.scrollLeft + gw.clientWidth > gw.scrollWidth - 200 && V.nC < MAXC) { V.nC += 10; const sy = gw.scrollTop, sx = gw.scrollLeft; renderGrid(); gw.scrollTop = sy; gw.scrollLeft = sx; renderSel(); if (edit) placeEditor(); }
 }, { passive: true });
 
@@ -7456,7 +7473,7 @@ document.addEventListener('mouseover', ev => {
   else if (td.classList.contains('cl') && typeof c.v === 'string' && c.v[0] !== '=') {
     text = c.v[0] === "'" ? c.v.slice(1) : c.v; kind = 'text';
     const st = effStyle(S, cell.r, cell.c, c);
-    if (!text.includes('\n') && textW(text, st) <= colW(S, cell.c) - 8) { hideNoteTip(); return; } // it all fits already
+    if (!text.includes('\n') && textW(text, st) <= colW(S, cell.c) - 6) { hideNoteTip(); return; } // it all fits already
   } else return;
   tipFor = td; tipTarget = { ...cell, kind, sheetId: S.id };
   const tip = $('ntip');
@@ -7720,8 +7737,8 @@ function shiftSheet(si, axis, at, n) {
     cells[key(r, c)] = cell;
   }
   S.cells = cells;
-  if (axis === 'r') { S.rh = shiftIdxMap(S.rh, at, n); S.rs = shiftIdxMap(S.rs, at, n); }
-  else { S.cw = shiftIdxMap(S.cw, at, n); S.cs = shiftIdxMap(S.cs, at, n); }
+  if (axis === 'r') { S.rh = shiftIdxMap(S.rh, at, n); S.rhH = shiftIdxMap(S.rhH || {}, at, n); S.rs = shiftIdxMap(S.rs, at, n); }
+  else { S.cw = shiftIdxMap(S.cw, at, n); S.cwH = shiftIdxMap(S.cwH || {}, at, n); S.cs = shiftIdxMap(S.cs, at, n); }
   const [i1, i2] = axis === 'r' ? [0, 2] : [1, 3];
   S.mg = S.mg.map(m => {
     m = m.slice();
@@ -7773,6 +7790,31 @@ function delCellsUp() {
   });
 }
 
+/* ===================== hide / unhide ===================== */
+function hideCols() {
+  const g = selR(); if (isWholeRow(g)) { msgBox("You can't hide every column."); return; }
+  const c2 = Math.min(g.c2, g.c1 + 500);
+  if (mutate(() => { const S = sheet(); S.cwH = S.cwH || {}; for (let c = g.c1; c <= c2; c++) { if (S.cw[c] !== 0) S.cwH[c] = colW(S, c); S.cw[c] = 0; } })) setSel(sel.ar === 0 && isWholeCol(g) ? 0 : sel.ar, c2 + 1);
+}
+function hideRows() {
+  const g = selR(); if (isWholeCol(g)) { msgBox("You can't hide every row."); return; }
+  const r2 = Math.min(g.r2, g.r1 + 20000);
+  if (mutate(() => { const S = sheet(); S.rhH = S.rhH || {}; for (let r = g.r1; r <= r2; r++) { if (S.rh[r] !== 0) S.rhH[r] = rowHeight(S, r); S.rh[r] = 0; } })) setSel(r2 + 1, sel.ac);
+}
+// Unhide whatever hidden ones are inside the selection (select the columns on both sides, or the whole sheet)
+function unhideCols() {
+  const g = selR(), S = sheet();
+  const hid = Object.keys(S.cw).map(Number).filter(c => S.cw[c] === 0 && c >= g.c1 && c <= g.c2);
+  if (!hid.length) { msgBox('No hidden columns are in the selection. Select the columns on both sides of the hidden ones (or press Ctrl+A), then try again.'); return; }
+  mutate(() => { for (const c of hid) { if (S.cwH && S.cwH[c]) S.cw[c] = S.cwH[c]; else delete S.cw[c]; if (S.cwH) delete S.cwH[c]; } });
+}
+function unhideRows() {
+  const g = selR(), S = sheet();
+  const hid = Object.keys(S.rh).map(Number).filter(r => S.rh[r] === 0 && r >= g.r1 && r <= g.r2);
+  if (!hid.length) { msgBox('No hidden rows are in the selection. Select the rows above and below the hidden ones (or press Ctrl+A), then try again.'); return; }
+  mutate(() => { for (const r of hid) { if (S.rhH && S.rhH[r]) S.rh[r] = S.rhH[r]; else delete S.rh[r]; if (S.rhH) delete S.rhH[r]; } });
+}
+
 /* ===================== clear, merge, borders, numbers ===================== */
 function clearSel(what) {
   const g = selR();
@@ -7805,7 +7847,7 @@ function toggleMerge() {
     S.mg = S.mg.filter(m => !(m[0] <= g.r2 && m[2] >= g.r1 && m[1] <= g.c2 && m[3] >= g.c1));
     S.mg.push([g.r1, g.c1, g.r2, g.c2]);
     const cell = S.cells[key(g.r1, g.c1)] || (S.cells[key(g.r1, g.c1)] = {});
-    cell.s = cleanStyle(Object.assign({}, cell.s, { ha: 'center' }));
+    cell.s = cleanStyle(Object.assign({}, cell.s || effStyle(S, g.r1, g.c1, null), { ha: 'center' }));
   });
   if (others) confirmBox('Merging cells only keeps the upper-left value and throws away the other values.', 'OK', go); else go();
 }
@@ -7814,7 +7856,7 @@ function applyBorder(kind) {
   mutate(() => {
     const S = sheet();
     const get = (r, c) => S.cells[key(r, c)] || (S.cells[key(r, c)] = {});
-    const setB = (r, c, side, on) => { const cell = get(r, c); const s = Object.assign({}, cell.s); const bd = Object.assign({}, s.bd); if (on) bd[side] = true; else delete bd[side]; s.bd = bd; cell.s = cleanStyle(s); if (!cell.s) delete cell.s; if (cell.v === undefined && !cell.s && !cell.n) delete S.cells[key(r, c)]; };
+    const setB = (r, c, side, on) => { const cell = get(r, c); const s = Object.assign({}, cell.s || effStyle(S, r, c, null)); const bd = Object.assign({}, s.bd); if (on) bd[side] = true; else delete bd[side]; s.bd = bd; cell.s = cleanStyle(s); if (!cell.s) delete cell.s; if (cell.v === undefined && !cell.s && !cell.n) delete S.cells[key(r, c)]; };
     if ((g.r2 - g.r1 + 1) * (g.c2 - g.c1 + 1) > 200000) throw Object.assign(new Error(), { userMsg: 'That selection is too big for borders.' });
     for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) {
       const top = r === g.r1, bot = r === g.r2, lft = c === g.c1, rgt = c === g.c2;
@@ -7879,8 +7921,22 @@ function sortSel(desc) {
   const byC = sel.ac;
   if (g.r1 === g.r2 && g.c1 === g.c2) {
     if (cellIsEmpty(sheet(), g.r1, g.c1)) { msgBox('Click a cell in the list you want to sort first.'); return; }
+    const ar = g.r1;
     g = currentRegion(g.r1, g.c1);
-    if (hasHeader(g)) g = { ...g, r1: g.r1 + 1 };
+    const S = sheet();
+    // The header is the closest row above that is all text and looks different (bold, underlined or colored) from the list
+    const sig = r => { const s = effStyle(S, r, sel.ac, S.cells[key(r, sel.ac)]) || {}; return [!!s.b, !!s.u, s.bg || ''].join('|'); };
+    let head = -1;
+    for (let r = ar - 1; r >= g.r1; r--) {
+      let n = 0, text = true;
+      for (let c = g.c1; c <= g.c2; c++) { const v = cellVal(wb.active, r, c); if (v === null || v === '') continue; n++; if (typeof v !== 'string') text = false; }
+      if (n && text && sig(r) !== sig(ar)) { head = r; break; }
+    }
+    if (head >= 0) g = { ...g, r1: head + 1 };
+    else if (hasHeader(g)) g = { ...g, r1: g.r1 + 1 };
+    // keep a Total row at the bottom (a formula adding up the rows above) out of the sort
+    const isTotal = r => { for (let c = g.c1; c <= g.c2; c++) { const v = S.cells[key(r, c)] && S.cells[key(r, c)].v; if (typeof v === 'string' && v[0] === '=' && /[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+/i.test(v)) return true; } return false; };
+    while (g.r2 > g.r1 + 1 && isTotal(g.r2)) g = { ...g, r2: g.r2 - 1 };
   }
   if (g.r2 <= g.r1) return;
   const si = wb.active;
@@ -8104,6 +8160,9 @@ const MENUS = {
     { head: 'Cell Size' },
     { label: 'Row Height…', run: rowHeightDlg }, { label: 'AutoFit Row Height', run: () => autofitRow(sel.ar) },
     { label: 'Column Width…', run: colWidthDlg }, { label: 'AutoFit Column Width', run: () => autofitCols(sel.ac) }, '-',
+    { head: 'Hide & Unhide' },
+    { label: 'Hide Rows', run: hideRows }, { label: 'Hide Columns', run: hideCols },
+    { label: 'Unhide Rows', run: unhideRows }, { label: 'Unhide Columns', run: unhideCols }, '-',
     { head: 'Organize Sheets' },
     { label: 'Rename Sheet', run: () => renameSheetInline(wb.active) }, { label: 'Move Sheet Left', run: () => moveSheet(wb.active, -1) }, { label: 'Move Sheet Right', run: () => moveSheet(wb.active, 1) }, '-',
     { label: 'Format Cells…', kb: 'Ctrl+1', run: formatCellsDlg },
@@ -8131,8 +8190,8 @@ function showCellMenu(x, y) {
     { label: 'Copy', ico: 'copy', kb: 'Ctrl+C', run: () => copyBtn(false) },
     { label: 'Paste', ico: 'paste', kb: 'Ctrl+V', run: pasteBtn }, '-',
   ];
-  if (wc) items.push({ label: 'Insert Columns', ico: 'insCol', run: () => insCols(true) }, { label: 'Delete Columns', ico: 'delCol', run: delCols }, { label: 'Clear Contents', run: () => clearSel('contents') }, '-', { label: 'Column Width…', run: colWidthDlg }, { label: 'AutoFit Column Width', run: () => autofitCols(sel.ac) });
-  else if (wr) items.push({ label: 'Insert Rows', ico: 'insRow', run: () => insRows(true) }, { label: 'Delete Rows', ico: 'delRow', run: delRows }, { label: 'Clear Contents', run: () => clearSel('contents') }, '-', { label: 'Row Height…', run: rowHeightDlg });
+  if (wc) items.push({ label: 'Insert Columns', ico: 'insCol', run: () => insCols(true) }, { label: 'Delete Columns', ico: 'delCol', run: delCols }, { label: 'Clear Contents', run: () => clearSel('contents') }, '-', { label: 'Column Width…', run: colWidthDlg }, { label: 'AutoFit Column Width', run: () => autofitCols(sel.ac) }, '-', { label: 'Hide', run: hideCols }, { label: 'Unhide', run: unhideCols });
+  else if (wr) items.push({ label: 'Insert Rows', ico: 'insRow', run: () => insRows(true) }, { label: 'Delete Rows', ico: 'delRow', run: delRows }, { label: 'Clear Contents', run: () => clearSel('contents') }, '-', { label: 'Row Height…', run: rowHeightDlg }, '-', { label: 'Hide', run: hideRows }, { label: 'Unhide', run: unhideRows });
   else items.push(
     { label: 'Insert Row Above', ico: 'insRow', run: () => insRows(true) }, { label: 'Insert Column to the Left', ico: 'insCol', run: () => insCols(true) },
     { label: 'Delete Row', ico: 'delRow', run: delRows }, { label: 'Delete Column', ico: 'delCol', run: delCols },
@@ -8431,7 +8490,7 @@ async function buildXlsx() {
     const x = `<xf numFmtId="${numId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0"${numId ? ' applyNumberFormat="1"' : ''}${fontId ? ' applyFont="1"' : ''}${fillId ? ' applyFill="1"' : ''}${borderId ? ' applyBorder="1"' : ''}${al ? ' applyAlignment="1">' + al + '</xf>' : '/>'}`;
     return intern(xfs, xfIx, x);
   }
-  const sheetXml = [];
+  const sheetXml = [], noteParts = [];
   wb.sheets.forEach((S, si) => {
     const byRow = new Map();
     for (const k of Object.keys(S.cells)) { const [r, c] = k.split(',').map(Number); let a = byRow.get(r); if (!a) byRow.set(r, a = []); a.push(c); }
@@ -8464,18 +8523,29 @@ async function buildXlsx() {
         }
       }
       const rs = S.rs[r] ? styleId(S.rs[r]) : 0;
-      sd += `<row r="${r + 1}"${S.rh[r] != null ? ` ht="${(S.rh[r] / PT).toFixed(2)}" customHeight="1"` : ''}${rs ? ` s="${rs}" customFormat="1"` : ''}>${rowXml}</row>`;
+      const hidR = S.rh[r] === 0, htPx = hidR ? ((S.rhH && S.rhH[r]) || DEF_H) : S.rh[r];
+      sd += `<row r="${r + 1}"${S.rh[r] != null ? ` ht="${(htPx / PT).toFixed(2)}" customHeight="1"` : ''}${hidR ? ' hidden="1"' : ''}${rs ? ` s="${rs}" customFormat="1"` : ''}>${rowXml}</row>`;
     }
     const colKeys = new Set([...Object.keys(S.cw), ...Object.keys(S.cs)].map(Number));
-    const colsXml = colKeys.size ? '<cols>' + [...colKeys].sort((a, b) => a - b).map(c => `<col min="${c + 1}" max="${c + 1}" width="${((colW(S, c) - 5) / 7).toFixed(2)}"${S.cw[c] != null ? ' customWidth="1"' : ''}${S.cs[c] ? ` style="${styleId(S.cs[c])}"` : ''}/>`).join('') + '</cols>' : '';
+    const colsXml = colKeys.size ? '<cols>' + [...colKeys].sort((a, b) => a - b).map(c => { const hid = S.cw[c] === 0, px = hid ? ((S.cwH && S.cwH[c]) || DEF_W) : colW(S, c); return `<col min="${c + 1}" max="${c + 1}" width="${Math.max(0, (px - 5) / 7).toFixed(2)}"${hid ? ' hidden="1"' : ''}${S.cw[c] != null ? ' customWidth="1"' : ''}${S.cs[c] ? ` style="${styleId(S.cs[c])}"` : ''}/>`; }).join('') + '</cols>' : '';
+    // notes: comments part + the drawing Excel uses to show them
+    const notes = Object.entries(S.cells).filter(([, c]) => c.n).map(([k, c]) => { const [r, cc] = k.split(',').map(Number); return { r, c: cc, n: c.n }; }).sort((a, b) => a.r - b.r || a.c - b.c);
+    const legacy = notes.length ? '<legacyDrawing r:id="rIdV1"/>' : '';
+    if (notes.length) {
+      noteParts.push({ si, n: notes.length });
+      zip.file(`xl/comments${si + 1}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<comments xmlns="${NS_MAIN}"><authors><author>Money</author></authors><commentList>${notes.map(x => `<comment ref="${A1(x.r, x.c)}" authorId="0"><text><t xml:space="preserve">${xmlEsc(x.n)}</t></text></comment>`).join('')}</commentList></comments>`);
+      const shapes = notes.map((x, i) => `<v:shape id="_x0000_s${1024 * (si + 1) + i + 1}" type="#_x0000_t202" style="position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:150pt;height:70pt;z-index:${i + 1};visibility:hidden" fillcolor="#ffffe1" o:insetmode="auto"><v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/><v:path o:connecttype="none"/><v:textbox style="mso-direction-alt:auto"><div style="text-align:left"></div></v:textbox><x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>${x.c + 1}, 15, ${x.r}, 2, ${x.c + 4}, 15, ${x.r + 5}, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>${x.r}</x:Row><x:Column>${x.c}</x:Column></x:ClientData></v:shape>`).join('');
+      zip.file(`xl/drawings/vmlDrawing${si + 1}.vml`, `<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="${si + 1}"/></o:shapelayout><v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype>${shapes}</xml>`);
+      zip.file(`xl/worksheets/_rels/sheet${si + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdV1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing${si + 1}.vml"/><Relationship Id="rIdC1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments${si + 1}.xml"/></Relationships>`);
+    }
     const fr = S.frz.r || 0, fc = S.frz.c || 0;
     const pane = fr || fc ? `<pane${fc ? ` xSplit="${fc}"` : ''}${fr ? ` ySplit="${fr}"` : ''} topLeftCell="${A1(fr, fc)}" activePane="${fr && fc ? 'bottomRight' : fr ? 'bottomLeft' : 'topRight'}" state="frozen"/>` : '';
     const views = `<sheetViews><sheetView workbookViewId="0"${si === wb.active ? ' tabSelected="1"' : ''}${S.grid === false ? ' showGridLines="0"' : ''}${S.zoom && S.zoom !== 100 ? ` zoomScale="${S.zoom}"` : ''}>${pane}</sheetView></sheetViews>`;
     const merges = S.mg.length ? `<mergeCells count="${S.mg.length}">${S.mg.map(m => `<mergeCell ref="${A1(m[0], m[1])}:${A1(m[2], m[3])}"/>`).join('')}</mergeCells>` : '';
-    sheetXml.push(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"><dimension ref="A1:${A1(maxR, maxC)}"/>${views}<sheetFormatPr defaultRowHeight="15"/>${colsXml}<sheetData>${sd}</sheetData>${merges}<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>`);
+    sheetXml.push(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}"><dimension ref="A1:${A1(maxR, maxC)}"/>${views}<sheetFormatPr defaultRowHeight="15"/>${colsXml}<sheetData>${sd}</sheetData>${merges}<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>${legacy}</worksheet>`);
   });
   const n = wb.sheets.length;
-  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${wb.sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`);
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/>${noteParts.map(p => `<Override PartName="/xl/comments${p.si + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>`).join('')}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${wb.sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`);
   zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
   zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_R}"><bookViews><workbookView activeTab="${wb.active}"/></bookViews><sheets>${wb.sheets.map((S, i) => `<sheet name="${xmlEsc(S.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`);
   zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${wb.sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
@@ -8615,14 +8685,14 @@ async function readXlsxBook(file) {
       const a = (+col.getAttribute('min') || 1) - 1, b = Math.min((+col.getAttribute('max') || 1) - 1, a + 300);
       const w = parseFloat(col.getAttribute('width')); const hid = col.getAttribute('hidden') === '1';
       const st = col.getAttribute('style') ? xfStyles[+col.getAttribute('style')] : null;
-      for (let c = a; c <= b && c <= 300; c++) { if (hid) S.cw[c] = 0; else if (w >= 0 && (col.getAttribute('customWidth') === '1' || Math.abs(w * 7 + 5 - DEF_W) > 3)) S.cw[c] = Math.round(w * 7 + 5); if (st && (st.bg || st.nf || st.b)) S.cs[c] = st; }
+      for (let c = a; c <= b && c <= 300; c++) { if (hid) { S.cw[c] = 0; if (w > 0) S.cwH[c] = Math.round(w * 7 + 5); } else if (w >= 0 && (col.getAttribute('customWidth') === '1' || Math.abs(w * 7 + 5 - DEF_W) > 3)) S.cw[c] = Math.round(w * 7 + 5); if (st && (st.bg || st.nf || st.b)) S.cs[c] = st; }
     }
     const sharedF = new Map();
     let rowsSeen = 0;
     for (const row of all(kid(root, 'sheetData'), 'row')) {
       if (++rowsSeen > 30000) { truncated = true; break; }
       const rr = (+row.getAttribute('r') || rowsSeen) - 1;
-      if (row.getAttribute('customHeight') === '1' || row.getAttribute('hidden') === '1') { const ht = parseFloat(row.getAttribute('ht')); S.rh[rr] = row.getAttribute('hidden') === '1' ? 0 : Math.round((ht || 15) * PT); }
+      if (row.getAttribute('customHeight') === '1' || row.getAttribute('hidden') === '1') { const ht = parseFloat(row.getAttribute('ht')); if (row.getAttribute('hidden') === '1') { S.rh[rr] = 0; if (ht > 0) S.rhH[rr] = Math.round(ht * PT); } else S.rh[rr] = Math.round((ht || 15) * PT); }
       let ci = -1;
       for (const c of kids(row, 'c')) {
         const ref = c.getAttribute('r');
@@ -8705,6 +8775,12 @@ function readCsv(text, name) {
   }
   if (f !== '' || row.length) { row.push(f); rows.push(row); }
   rows.slice(0, 30000).forEach((rw, r) => rw.slice(0, 500).forEach((s, c) => { if (s === '') return; let p; try { p = parseInput(s); } catch { p = { v: s }; } const cell = { v: p.v }; if (p.nf) cell.s = { nf: p.nf, ...(p.dp != null ? { dp: p.dp } : {}) }; S.cells[key(r, c)] = cell; }));
+  // dates and dollar amounts get a column wide enough to show them (instead of ####)
+  for (const [k, cell] of Object.entries(S.cells)) {
+    if (typeof cell.v !== 'number' || !cell.s) continue;
+    const c = +k.split(',')[1], need = Math.ceil(textW(display(cell.v, cell.s).t, null) + 12);
+    if (need > colW(S, c)) S.cw[c] = Math.min(300, need);
+  }
   return { sheets: [S], truncated: rows.length > 30000 };
 }
 $('openFile').addEventListener('change', async ev => {
