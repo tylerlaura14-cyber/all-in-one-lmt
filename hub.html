@@ -222,7 +222,7 @@ html{background:var(--hub-bg)!important}body{background:transparent!important;mi
   <nav class="hub-tabs" id="hub-tabs" role="tablist" aria-label="Apps" aria-orientation="vertical">
     <button type="button" role="tab" id="tab-workout" data-tab="workout">💪 Workout</button>
     <button type="button" role="tab" id="tab-money" data-tab="money">💵 Money</button>
-    <button type="button" role="tab" id="tab-insights" data-tab="insights">📊 Insights</button>
+    <button type="button" role="tab" id="tab-insights" data-tab="insights" style="display:none">📊 Insights</button>
   </nav>
 </header>
 
@@ -395,8 +395,8 @@ const HUB = (() => {
     document.querySelectorAll("#hub-tabs button").forEach(b => b.addEventListener("click", () => { showTab(b.dataset.tab); setMenu(false); window.scrollTo(0, 0); }));
     let first = "workout", saved = null;
     try { saved = localStorage.getItem("hub_tab"); first = saved || "workout"; } catch {}
-    // Mind Tracker and Fresh Start are turned off in this version
-    if (first === "fresh" || first === "mind" || !document.getElementById("app-" + first)) first = "workout";
+    // Mind Tracker, Fresh Start and Insights are turned off in this version
+    if (first === "fresh" || first === "mind" || first === "insights" || !document.getElementById("app-" + first)) first = "workout";
     showTab(first);
   }
 
