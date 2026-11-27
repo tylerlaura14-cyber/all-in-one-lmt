@@ -5324,6 +5324,9 @@ textarea.kb{position:absolute;left:-10000px;top:0;width:10px;height:10px;opacity
 .ntip .na{display:flex;justify-content:flex-end}
 .ntip .na .btn{min-width:64px}
 table.g td.cl{text-overflow:ellipsis}
+table.g td.hz,table.g th.hz{padding:0!important;border-right-width:0!important;font-size:0!important;overflow:hidden!important}
+table.g td.hz::after{display:none}
+table.g tr.hr>*{padding:0!important;font-size:0!important;line-height:0!important;border-bottom-width:0!important;overflow:hidden!important}
 .ac{position:fixed;z-index:58;background:#fff;border:1px solid #b9b9b9;box-shadow:0 3px 10px rgba(0,0,0,.18);font:12px "Segoe UI",system-ui,sans-serif;min-width:240px;max-width:360px}
 .ac .it{padding:3px 8px;display:flex;gap:8px;align-items:center;cursor:default}
 .ac .it::before{content:"fx";font:italic 600 11px "Times New Roman",serif;color:#217346;width:14px}
@@ -6471,6 +6474,7 @@ function cleanStyle(s) {
   if (typeof s.fc === 'string' && HEX.test(s.fc)) o.fc = s.fc;
   if (typeof s.bg === 'string' && HEX.test(s.bg)) o.bg = s.bg;
   if (['left', 'center', 'right'].includes(s.ha)) o.ha = s.ha;
+  if (s.va === 'top' || s.va === 'center') o.va = s.va;
   if (NFS.includes(s.nf)) o.nf = s.nf;
   if (Number.isInteger(s.dp) && s.dp >= 0 && s.dp <= 10) o.dp = s.dp;
   if (typeof s.code === 'string' && s.code.length <= 120) o.code = s.code;
@@ -6576,6 +6580,7 @@ function rowHeight(S, r) {
   let h = DEF_H;
   const cols = rowIndex.get(r);
   if (cols) for (const c of cols) {
+    if (S.cw[c] === 0) continue; // hidden column
     const cell = S.cells[r + ',' + c], st = effStyle(S, r, c, cell);
     if (!st) continue;
     const lh = Math.ceil(((st.fs || 11) * PT) * 1.25) + 2;
@@ -6607,17 +6612,20 @@ function renderGrid() {
   parts.push(`<colgroup><col style="width:${rhW}px">`);
   for (let c = 0; c < nC; c++) parts.push(`<col style="width:${colW(S, c)}px">`);
   parts.push('</colgroup><thead><tr><th class="corner" title="Select All"></th>');
-  for (let c = 0; c < nC; c++) parts.push(`<th class="ch">${colName(c)}<i class="rz" data-rzc="${c}"></i></th>`);
+  const hidC = new Set(); for (let c = 0; c < nC; c++) if (S.cw[c] === 0) hidC.add(c);
+  for (let c = 0; c < nC; c++) parts.push(`<th class="ch${hidC.has(c) ? ' hz' : ''}">${colName(c)}<i class="rz" data-rzc="${c}"></i></th>`);
   parts.push('</tr></thead><tbody>');
   const sty = (r, c) => effStyle(S, r, c, S.cells[r + ',' + c]);
   const anyColStyle = Object.keys(S.cs).length > 0;
+  const plainTd = S.grid ? '<td></td>' : '<td style="border-color:#fff"></td>', hidTd = '<td class="hz"></td>';
+  const emptyRow = hidC.size ? Array.from({ length: nC }, (_, c) => hidC.has(c) ? hidTd : plainTd).join('') : plainTd.repeat(nC);
   for (let r = 0; r < nR; r++) {
     const h = rowHeight(S, r);
-    parts.push(`<tr style="height:${h}px"><th class="rh"${r < frzR ? ` style="top:${topOf[r]}px;z-index:5"` : ''}>${r + 1}<i class="rzr" data-rzr="${r}"></i></th>`);
+    parts.push(`<tr style="height:${h}px"${h === 0 ? ' class="hr"' : ''}><th class="rh"${r < frzR ? ` style="top:${topOf[r]}px;z-index:5"` : ''}>${r + 1}<i class="rzr" data-rzr="${r}"></i></th>`);
     const rowCols = rowIndex.get(r);
     // an empty row with nothing around it that could draw a border into it: plain cells (fast)
     if (!rowCols && !S.rs[r] && !S.rs[r + 1] && !anyColStyle && !hasMg && r >= frzR && frzC === 0 && !rowIndex.get(r + 1)) {
-      parts.push(S.grid ? '<td></td>'.repeat(nC) : '<td style="border-color:#fff"></td>'.repeat(nC)); parts.push('</tr>'); continue;
+      parts.push(emptyRow); parts.push('</tr>'); continue;
     }
     for (let c = 0; c < nC; c++) {
       const k = r + ',' + c;
@@ -6662,7 +6670,7 @@ function renderGrid() {
         }
       } else if (st && st.ha && st.ha !== 'left') style += `text-align:${st.ha};`;
       if (st) {
-        if (st.ff) style += `font-family:"${st.ff}",Calibri,Arial,sans-serif;`;
+        if (st.ff) style += `font-family:'${st.ff}',Calibri,Arial,sans-serif;`;
         if (st.fs && st.fs !== 11) style += `font-size:${st.fs * PT}px;line-height:1.2;`;
         if (st.b) style += 'font-weight:700;';
         if (st.i) style += 'font-style:italic;';
@@ -6670,6 +6678,7 @@ function renderGrid() {
         if (st.fc) style += `color:${st.fc};`;
         if (st.bg) style += `background:${st.bg};`;
         if (st.wrap) cls += ' wr';
+        if (st.va) style += `vertical-align:${st.va === 'center' ? 'middle' : 'top'};`;
         if (st.ind) style += `padding-left:${3 + st.ind * 9}px;`;
       }
       // borders: a cell owns its right and bottom lines
@@ -6687,6 +6696,7 @@ function renderGrid() {
       if (sh.length) style += `box-shadow:${sh.join(',')};`;
       if (r < frzR || c < frzC) { cls += ' fz'; if (r < frzR) style += `top:${topOf[r]}px;`; if (c < frzC) style += `left:${leftOf[c]}px;`; if (r < frzR && c < frzC) style += 'z-index:3;'; }
       if (cell && cell.n) cls += ' hn';
+      if (hidC.has(c) && !(mg && mg[3] > mg[1])) cls += ' hz';
       const span = mg ? `${mg[3] > mg[1] ? ` colspan="${mg[3] - mg[1] + 1}"` : ''}${mg[2] > mg[0] ? ` rowspan="${mg[2] - mg[0] + 1}"` : ''}` : '';
       parts.push(`<td${span}${cls ? ` class="${cls.trim()}"` : ''}${style ? ` style="${style}"` : ''}>${inner}</td>`);
     }
@@ -6868,7 +6878,12 @@ function moveBy(dr, dc, extend) {
   let r = sel.ar, c = sel.ac;
   const m = mergeAt(S, r, c);
   if (m) { if (dr > 0) r = m[2]; if (dc > 0) c = m[3]; }
-  setSel(Math.max(0, r + dr), Math.max(0, c + dc));
+  let nr = Math.max(0, r + dr), nc = Math.max(0, c + dc);
+  // hidden rows and columns are stepped over, like in Excel
+  const sr = Math.sign(dr), scl = Math.sign(dc);
+  for (let i = 0; sr && S.rh[nr] === 0 && i < 5000; i++) { if (nr + sr < 0) { nr = r; break; } nr += sr; }
+  for (let i = 0; scl && S.cw[nc] === 0 && i < 500; i++) { if (nc + scl < 0) { nc = c; break; } nc += scl; }
+  setSel(nr, nc);
 }
 function focusGrid() { if (!touchMode && !ROOT.querySelector('dialog[open]')) kb.focus({ preventScroll: true }); }
 function pageRows() { return Math.max(1, Math.floor(gw.clientHeight / ((DEF_H + 1) * (sheet().zoom || 100) / 100)) - 2); }
@@ -8347,7 +8362,7 @@ function printSheet() {
       const m = masters.get(r + ',' + c);
       let css = `text-align:${st.ha || d.al || 'left'};`;
       if (st.b) css += 'font-weight:bold;'; if (st.i) css += 'font-style:italic;'; if (st.u) css += 'text-decoration:underline;';
-      if (st.fc) css += `color:${st.fc};`; if (st.bg) css += `background:${st.bg};`; if (st.fs) css += `font-size:${st.fs}pt;`; if (st.ff) css += `font-family:"${st.ff}",Calibri,Arial;`;
+      if (st.fc) css += `color:${st.fc};`; if (st.bg) css += `background:${st.bg};`; if (st.fs) css += `font-size:${st.fs}pt;`; if (st.ff) css += `font-family:'${st.ff}',Calibri,Arial;`;
       if (st.wrap) css += 'white-space:pre-wrap;';
       if (st.bd) for (const [k, side] of [['t', 'top'], ['r', 'right'], ['b', 'bottom'], ['l', 'left']]) if (st.bd[k]) css += `border-${side}:1px solid #000;`;
       rows += `<td${m ? ` colspan="${m[3] - m[1] + 1}" rowspan="${m[2] - m[0] + 1}"` : ''} style="${css}">${d.h || esc(d.t)}</td>`;
@@ -8412,7 +8427,7 @@ async function buildXlsx() {
     const [bi, code] = nfCode(st);
     numId = bi;
     if (code) { numId = numIx.get(code); if (numId === undefined) { numId = 164 + numFmts.length; numFmts.push(code); numIx.set(code, numId); } }
-    const al = st.ha || st.wrap || st.ind ? `<alignment${st.ha ? ` horizontal="${st.ha}"` : ''}${st.ind ? ` indent="${st.ind}"` : ''}${st.wrap ? ' wrapText="1"' : ''}/>` : '';
+    const al = st.ha || st.va || st.wrap || st.ind ? `<alignment${st.ha ? ` horizontal="${st.ha}"` : ''}${st.va ? ` vertical="${st.va}"` : ''}${st.ind ? ` indent="${st.ind}"` : ''}${st.wrap ? ' wrapText="1"' : ''}/>` : '';
     const x = `<xf numFmtId="${numId}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0"${numId ? ' applyNumberFormat="1"' : ''}${fontId ? ' applyFont="1"' : ''}${fillId ? ' applyFill="1"' : ''}${borderId ? ' applyBorder="1"' : ''}${al ? ' applyAlignment="1">' + al + '</xf>' : '/>'}`;
     return intern(xfs, xfIx, x);
   }
@@ -8580,13 +8595,17 @@ async function readXlsxBook(file) {
       if (nid) { if (codes[nid] !== undefined) Object.assign(s, classifyCode(codes[nid])); else if (BUILTIN_NF[nid]) { s.nf = BUILTIN_NF[nid][0]; if (BUILTIN_NF[nid][1] != null) s.dp = BUILTIN_NF[nid][1]; } }
       if (s.nf === 'general') delete s.nf;
       const al = kid(x, 'alignment');
-      if (al) { const h = al.getAttribute('horizontal'); if (h === 'center' || h === 'centerContinuous') s.ha = 'center'; else if (h === 'right') s.ha = 'right'; else if (h === 'left') s.ha = 'left'; if (al.getAttribute('wrapText') === '1' || al.getAttribute('wrapText') === 'true') s.wrap = true; const ind = parseInt(al.getAttribute('indent'), 10); if (ind > 0) s.ind = Math.min(ind, 15); }
+      if (al) { const v = al.getAttribute('vertical'); if (v === 'center' || v === 'top') s.va = v; const h = al.getAttribute('horizontal'); if (h === 'center' || h === 'centerContinuous') s.ha = 'center'; else if (h === 'right') s.ha = 'right'; else if (h === 'left') s.ha = 'left'; if (al.getAttribute('wrapText') === '1' || al.getAttribute('wrapText') === 'true') s.wrap = true; const ind = parseInt(al.getAttribute('indent'), 10); if (ind > 0) s.ind = Math.min(ind, 15); }
       return cleanStyle(s);
     });
   }
   const out = [];
   let truncated = false;
-  for (const sh of all(kid(wbx.documentElement, 'sheets'), 'sheet')) {
+  // Sheets hidden in Excel stay hidden: they're skipped, unless the file has nothing else
+  const allSheets = all(kid(wbx.documentElement, 'sheets'), 'sheet');
+  const visible = allSheets.filter(sh => (sh.getAttribute('state') || 'visible') === 'visible');
+  const hiddenSkipped = visible.length ? allSheets.length - visible.length : 0;
+  for (const sh of visible.length ? visible : allSheets) {
     const rel = rels[sh.getAttributeNS(NS_R, 'id') || sh.getAttribute('r:id')];
     if (!rel || !zip.file(rel.target) || !/worksheet/.test(rel.type)) continue;
     const x = xmlDoc(await zip.file(rel.target).async('string')), root = x.documentElement;
@@ -8598,7 +8617,7 @@ async function readXlsxBook(file) {
       const st = col.getAttribute('style') ? xfStyles[+col.getAttribute('style')] : null;
       for (let c = a; c <= b && c <= 300; c++) { if (hid) S.cw[c] = 0; else if (w >= 0 && (col.getAttribute('customWidth') === '1' || Math.abs(w * 7 + 5 - DEF_W) > 3)) S.cw[c] = Math.round(w * 7 + 5); if (st && (st.bg || st.nf || st.b)) S.cs[c] = st; }
     }
-    const shared = new Map();
+    const sharedF = new Map();
     let rowsSeen = 0;
     for (const row of all(kid(root, 'sheetData'), 'row')) {
       if (++rowsSeen > 30000) { truncated = true; break; }
@@ -8625,8 +8644,8 @@ async function readXlsxBook(file) {
         if (fEl) {
           const ft = fEl.getAttribute('t'), si2 = fEl.getAttribute('si'), txt = fEl.textContent;
           if (ft === 'shared' && si2 != null) {
-            if (txt) { shared.set(si2, { f: '=' + txt, r, c: col }); formula = '=' + txt; }
-            else { const m = shared.get(si2); if (m) formula = shiftFormula(m.f, r - m.r, col - m.c); }
+            if (txt) { sharedF.set(si2, { f: '=' + txt, r, c: col }); formula = '=' + txt; }
+            else { const m = sharedF.get(si2); if (m) formula = shiftFormula(m.f, r - m.r, col - m.c); }
           } else if (txt) formula = '=' + txt;
         }
         if (formula) {
@@ -8669,7 +8688,7 @@ async function readXlsxBook(file) {
     out.push(S);
   }
   if (!out.length) throw new Error("No sheets were found in that file.");
-  return { sheets: out, truncated };
+  return { sheets: out, truncated, hiddenSkipped };
 }
 function readCsv(text, name) {
   const S = newSheet(name.replace(/\.[^.]+$/, '').slice(0, 31) || 'Sheet1');
@@ -8705,7 +8724,7 @@ $('openFile').addEventListener('change', async ev => {
       if (wb.sheets.length > got.sheets.length && !hasData) { wb.sheets.splice(0, first); wb.active = 0; } else wb.active = first;
       sel = vs();
     });
-    if (ok) { gw.scrollTop = 0; gw.scrollLeft = 0; msgBox(`Opened "${file.name}": ${names.length} sheet${names.length === 1 ? '' : 's'} (${names.join(', ')}). The sheet tabs are at the bottom.${got.truncated ? '\n\nThe file was very large, so only the first 30,000 rows and 500 columns were brought in.' : ''}`); }
+    if (ok) { gw.scrollTop = 0; gw.scrollLeft = 0; msgBox(`Opened "${file.name}": ${names.length} sheet${names.length === 1 ? '' : 's'} (${names.join(', ')}). The sheet tabs are at the bottom.${got.hiddenSkipped ? `\n\n${got.hiddenSkipped} sheet${got.hiddenSkipped === 1 ? ' was' : 's were'} hidden in Excel, so ${got.hiddenSkipped === 1 ? 'it was' : 'they were'} left out.` : ''}${got.truncated ? '\n\nThe file was very large, so only the first 30,000 rows and 500 columns were brought in.' : ''}`); }
   };
   const replaceAll = () => {
     const ok = mutate(() => { for (const S of got.sheets) delete S.hiddenInFile; wb.sheets = got.sheets; wb.active = 0; VSM.clear(); sel = vs(); });
