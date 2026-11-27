@@ -5362,6 +5362,80 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.18)}
 .dlg .warn .ic{font-size:26px;line-height:1}
 @media (max-width:767px){.tbar .ttl{padding-right:0}.findbar{right:8px;left:8px;width:auto;top:120px}}
 @media print{.xl{display:none}}
+
+/* ===== theme: follows All in One's color theme and light / dark mode (the --aio-* colors come from the app) ===== */
+.xl{--acc:var(--aio-btn,#217346);--on-acc:var(--aio-on-btn,#fff);--acc2:color-mix(in srgb,var(--acc) 80%,#000);
+  --g:var(--acc);--g2:var(--acc2);
+  --surf:var(--aio-card,#fff);--rib:var(--aio-header,#f3f3f3);--ink:var(--aio-text,#262626);--mut:var(--aio-muted,#666);
+  --line:var(--aio-line,#d4d4d4);--field:var(--aio-input,#fff);
+  --hover:color-mix(in srgb,var(--ink) 10%,transparent);--press:color-mix(in srgb,var(--ink) 18%,transparent);
+  --pick:color-mix(in srgb,var(--acc) 18%,var(--surf));
+  --cell:#fff;--cellink:#000;--grid:#e1e1e1;--bd:#000;--tip:#ffffe1;--tipink:#000;
+  --hd:var(--rib);--hdsel:color-mix(in srgb,var(--acc) 16%,var(--rib));
+  background:var(--surf);color:var(--ink)}
+:host([data-theme=dark]) .xl{--cell:var(--aio-card,#1f1f1f);--cellink:var(--aio-text,#e8e8e8);
+  --grid:color-mix(in srgb,var(--cellink) 13%,var(--cell));--bd:color-mix(in srgb,var(--cellink) 80%,var(--cell));
+  --tip:#3a3826;--tipink:#f3f1e0;color-scheme:dark}
+.xl button:hover{background:var(--hover);border-color:transparent}
+.xl button:active{background:var(--press)}
+.xl input,.xl select,.xl textarea{color:var(--ink)}
+.tbar,.rtabs{background:var(--acc);color:var(--on-acc)}
+.tbar button,.rtabs button{color:var(--on-acc)}
+.tbar button:hover,.rtabs button:hover{background:color-mix(in srgb,var(--on-acc) 18%,transparent)}
+.rtabs button.on{background:var(--rib);color:var(--ink)}
+.rtabs button.file{background:var(--acc2);color:var(--on-acc)}
+.rtabs button.file:hover{background:color-mix(in srgb,var(--acc) 62%,#000)}
+.grp+.grp::before{border-left-color:var(--line)}
+.grp .gl{color:var(--mut)}
+.vs{background:var(--line)}
+.sm.t.on,.big.t.on{background:var(--press)!important;border-color:color-mix(in srgb,var(--ink) 30%,transparent)!important}
+select.rs,.namebox{background:var(--field);border-color:var(--line);color:var(--ink)}
+.sigma,.bigtxt{color:var(--ink)}
+.fbar{background:var(--surf);border-bottom-color:var(--line)}
+.fxb{border-right-color:var(--line);color:var(--mut)}
+.fxb button{color:var(--mut)}
+.xl .fx{background:var(--surf);color:var(--ink)}
+.gw{background:var(--cell)}
+table.g{color:var(--cellink)}
+table.g.nogrid td{border-color:var(--cell)}
+table.g td.fz{background:var(--cell)}
+table.g th,table.g th.corner{color:var(--mut);background:var(--hd);border-color:var(--line)}
+table.g th.corner::after{border-bottom-color:var(--mut)}
+table.g th.hs{background:var(--hdsel);color:var(--ink)}
+table.g th.ha{background:color-mix(in srgb,var(--acc) 35%,var(--rib));color:var(--ink)}
+.shade{background:color-mix(in srgb,var(--cellink) 10%,transparent)}
+.fillh{border-color:var(--cell)}
+.copybox{animation-name:ants2}
+@keyframes ants2{50%{opacity:.4}}
+.fillbox{border-color:var(--mut)}
+textarea.ed{background:var(--cell);color:var(--cellink)}
+.stabs,.sbar{background:var(--rib);border-top-color:var(--line)}
+.stabs .nav button,.sbar,.sbar .zm2 button{color:var(--mut)}
+.st{border-right-color:var(--line)!important;color:var(--mut)!important}
+.st:hover{background:var(--hover)!important}
+.st.on{background:var(--cell)!important;color:var(--acc)!important}
+.st input{background:var(--field);color:var(--ink)}
+.addst{color:var(--mut)!important}
+.sbar .agg b{color:var(--ink)}
+.sbar input[type=range]{accent-color:var(--acc)}
+.menu,.ac,.stip,.findbar,dialog.dlg{background:var(--surf);color:var(--ink);border-color:var(--line)}
+.menu button:hover{background:var(--pick)!important}
+.menu button .kb2,.menu .note,.x{color:var(--mut)}
+.menu hr{border-top-color:var(--line)}
+.menu .mh{background:var(--rib);color:var(--mut)}
+.menu .pal button{border-color:var(--line)!important}
+.ntip{background:var(--tip);color:var(--tipink);border-color:var(--line)}
+.ac .it::before{color:var(--acc)}
+.ac .it.on,.dlg .flist div.on{background:var(--pick)}
+.ac .ds{background:var(--rib);color:var(--mut);border-top-color:var(--line)}
+.findbar .fh,.dlg .dh{border-bottom-color:var(--line)}
+.findbar input[type=text],.dlg .db input[type=text],.dlg .db input[type=number],.dlg .db textarea,.dlg .db select{background:var(--field);color:var(--ink);border-color:var(--line)}
+.dlg .df{background:var(--rib);border-top-color:var(--line)}
+.dlg .flist{border-color:var(--line)}
+.dlg .fdesc{color:var(--ink)}
+.btn{background:var(--rib)!important;border-color:var(--line)!important;color:var(--ink)}
+.btn:hover{background:var(--pick)!important;border-color:var(--acc)!important}
+.btn.pri{border-color:var(--acc)!important;box-shadow:inset 0 0 0 1px var(--acc)}
 `;
 
 const XL_HTML = `
@@ -6559,6 +6633,11 @@ const colW = (S, c) => S.cw[c] != null ? S.cw[c] : DEF_W;
 const mctx = document.createElement('canvas').getContext('2d');
 const PT = 4 / 3;
 function cssFont(st) { return `${st && st.i ? 'italic ' : ''}${st && st.b ? '700 ' : ''}${((st && st.fs) || 11) * PT}px ${st && st.ff ? `"${st.ff}",` : ''}Calibri,Carlito,"Aptos","Segoe UI",Arial,sans-serif`; }
+/* ===================== light / dark (follows All in One) ===================== */
+const isDark = () => ROOT.getRootNode().host.getAttribute('data-theme') === 'dark';
+const lum = hex => { const n = parseInt(String(hex).slice(1), 16); if (!(n >= 0)) return 1; const ch = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * ch(n >> 16 & 255) + 0.7152 * ch(n >> 8 & 255) + 0.0722 * ch(n & 255); };
+// The app's look changed (theme color or light/dark): redraw so cell text colors adapt
+addEventListener('aio-look', () => setTimeout(() => { if (wb) renderAll(); }, 0));
 const mcache = new Map();
 function textW(text, st) {
   const f = cssFont(st), k = f + '|' + text;
@@ -6602,6 +6681,7 @@ function rowHeight(S, r) {
 }
 function cellIsEmpty(S, r, c) { const cell = S.cells[r + ',' + c]; return !cell || cell.v === undefined || cell.v === '' ; }
 function renderGrid() {
+  const dark = isDark();
   const S = sheet(), V = vs(), si = wb.active;
   resetCalc(); buildRowIndex(S); ensureSize(S, V);
   const nR = V.nR, nC = V.nC;
@@ -6612,7 +6692,7 @@ function renderGrid() {
   const frzR = Math.min(S.frz.r || 0, nR), frzC = Math.min(S.frz.c || 0, nC);
   const leftOf = []; { let x = rhW; for (let c = 0; c < frzC; c++) { leftOf[c] = x; x += colW(S, c); } }
   const hdrH = 22; const topOf = []; { let y = hdrH; for (let r = 0; r < frzR; r++) { topOf[r] = y; y += rowHeight(S, r); } }
-  const gridColor = S.grid ? null : '#fff';
+  const gridColor = S.grid ? null : 'var(--cell)';
   const parts = [];
   parts.push(`<colgroup><col style="width:${rhW}px">`);
   for (let c = 0; c < nC; c++) parts.push(`<col style="width:${colW(S, c)}px">`);
@@ -6622,7 +6702,7 @@ function renderGrid() {
   parts.push('</tr></thead><tbody>');
   const sty = (r, c) => effStyle(S, r, c, S.cells[r + ',' + c]);
   const anyColStyle = Object.keys(S.cs).length > 0;
-  const plainTd = S.grid ? '<td></td>' : '<td style="border-color:#fff"></td>', hidTd = '<td class="hz"></td>';
+  const plainTd = S.grid ? '<td></td>' : '<td style="border-color:var(--cell)"></td>', hidTd = '<td class="hz"></td>';
   const emptyRow = hidC.size ? Array.from({ length: nC }, (_, c) => hidC.has(c) ? hidTd : plainTd).join('') : plainTd.repeat(nC);
   for (let r = 0; r < nR; r++) {
     const h = rowHeight(S, r);
@@ -6682,7 +6762,8 @@ function renderGrid() {
         if (st.b) style += 'font-weight:700;';
         if (st.i) style += 'font-style:italic;';
         if (st.u) style += 'text-decoration:underline;';
-        if (st.fc) style += `color:${st.fc};`;
+        if (st.fc && !(dark && !st.bg && lum(st.fc) < 0.04)) style += `color:${st.fc};`; // dark mode: black text on a plain cell would vanish
+        else if (dark && st.bg) style += `color:${lum(st.bg) > 0.5 ? '#000' : '#fff'};`; // readable on the highlight
         if (st.bg) style += `background:${st.bg};`;
         if (st.wrap) cls += ' wr';
         if (st.va) style += `vertical-align:${st.va === 'center' ? 'middle' : 'top'};`;
@@ -6691,14 +6772,14 @@ function renderGrid() {
       // borders: a cell owns its right and bottom lines
       const er = mg ? mg[3] : c, eb = mg ? mg[2] : r;
       const nb = sty(r, er + 1), nd = sty(eb + 1, c);
-      const black = '#000';
+      const black = 'var(--bd)';
       let rc = (st && st.bd && st.bd.r) || (nb && nb.bd && nb.bd.l) ? black : (st && st.bg) || gridColor;
       let bc = (st && st.bd && st.bd.b) || (nd && nd.bd && nd.bd.t) ? black : (st && st.bg) || gridColor;
       if (rc) style += `border-right-color:${rc};`;
       if (bc) style += `border-bottom-color:${bc};`;
       const sh = [];
-      if (st && st.bd && st.bd.t && r === 0) sh.push('inset 0 1px #000');
-      if (st && st.bd && st.bd.l && c === 0) sh.push('inset 1px 0 #000');
+      if (st && st.bd && st.bd.t && r === 0) sh.push('inset 0 1px var(--bd)');
+      if (st && st.bd && st.bd.l && c === 0) sh.push('inset 1px 0 var(--bd)');
       if (r > 0 && c === 0 && st && st.bd && st.bd.l) {} // handled above for column A only
       if (sh.length) style += `box-shadow:${sh.join(',')};`;
       if (r < frzR || c < frzC) { cls += ' fz'; if (r < frzR) style += `top:${topOf[r]}px;`; if (c < frzC) style += `left:${leftOf[c]}px;`; if (r < frzR && c < frzC) style += 'z-index:3;'; }
@@ -6985,8 +7066,8 @@ function placeEditor() {
   const st = effStyle(S, edit.r, edit.c, S.cells[key(edit.r, edit.c)]) || {};
   ed.style.font = editorFont(st);
   ed.style.lineHeight = Math.round(((st.fs || 11) * PT) * 1.25) + 'px';
-  ed.style.color = st.fc || '#000';
-  ed.style.background = st.bg || '#fff';
+  ed.style.color = st.fc && !(isDark() && !st.bg && lum(st.fc) < 0.04) ? st.fc : (isDark() && st.bg ? (lum(st.bg) > 0.5 ? '#000' : '#fff') : '');
+  ed.style.background = st.bg || '';
   const lines = ed.value.split('\n');
   const w = Math.max(...lines.map(l => textW(l, st))) + 14;
   const maxW = Math.max(R.w, zm.offsetWidth - R.x - 4);
@@ -9017,6 +9098,8 @@ const ICONS = {
   zoomsel: I('<rect x="2" y="2" width="12" height="12" fill="#cfe8d9" stroke="#217346"/><circle cx="14" cy="14" r="5" fill="#fff" stroke="#333" stroke-width="1.6"/><path d="M17.5 17.5L22 22" stroke="#333" stroke-width="2.4"/>'),
   freeze: I('<rect x="3" y="3" width="18" height="18" fill="#fff" stroke="#555"/><rect x="3" y="3" width="18" height="5" fill="#dbe8f7"/><rect x="3" y="3" width="5" height="18" fill="#dbe8f7"/><path d="M3 8h18M8 3v18" stroke="#2f6fd0" stroke-width="1.8"/>'),
 };
+// dark grays and black in the icons follow the text color, so icons stay visible in dark mode
+for (const k in ICONS) ICONS[k] = ICONS[k].replace(/"#(333|444|555|000)"/g, '"currentColor"');
 ROOT.querySelectorAll('svg[data-ico]').forEach(svg => { const tmp = document.createElement('div'); tmp.innerHTML = ICONS[svg.dataset.ico] || ''; const n = tmp.firstElementChild; if (n) { if (svg.getAttribute('style')) n.setAttribute('style', svg.getAttribute('style')); svg.replaceWith(n); } });
 
 /* ===================== sizing and start ===================== */
